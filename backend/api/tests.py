@@ -1,0 +1,104 @@
+import json
+from unittest.mock import patch
+
+from django.contrib.auth.models import User as AdminUser
+from django.core.management import call_command
+from django.test import TestCase, override_settings
+
+from .models import CustomerRequest, Debt, Expense, Product, Sale, Supplier, User
+
+
+class BusinessDataTests(TestCase):
+    def test_put_saves_frontend_data_into_django_tables(self):
+        register_response = self.client.post(
+            "/api/auth/register",
+            data=json.dumps({
+                "username": "newstaff",
+                "name": "Sales Staff",
+                "email": "new.staff@kingsstore.local",
+                "password": "password123",
+                "role": "STAFF",
+            }),
+            content_type="application/json",
+        )
+        self.assertEqual(register_response.status_code, 201)
+        token = register_response.json()["token"]
+
+        payload = {
+            "products": [{"id": "P-1", "serialCode": "SN-1", "name": "Acetone", "category": "Solvent", "quantity": 4, "unitPrice": 1000, "costPrice": 700}],
+            "sales": [{"id": "INV-1", "customer": "Walk-in Customer", "total": 1000, "paid": 1000, "status": "Paid", "method": "Cash", "date": "2026-06-05"}],
+            "debts": [{"id": "D-1", "customer": "Walk-in Customer", "total": 500, "paid": 0, "status": "Current", "dueDate": "2026-06-12"}],
+            "expenses": [{"id": "EXP-1", "amount": 250, "category": "Transport", "description": "Delivery", "date": "2026-06-05"}],
+            "suppliers": [{"id": "SUP-1", "name": "Main Supplier", "product": "Acetone", "quantity": 3, "costPrice": 700, "total": 2100, "paid": 1000, "deliveryDate": "2026-06-05"}],
+            "customerRequests": [{"id": "REQ-1", "productName": "Beaker", "quantity": 2, "dateRequested": "2026-06-05", "status": "Open"}],
+            "cart": [{"productId": "P-1", "quantity": 1}],
+        }
+
+        response = self.client.put(
+            "/api/business-data",
+            data=json.dumps({"data": payload}),
+            content_type="application/json",
+            HTTP_AUTHORIZATION=f"Bearer {token}",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(Product.objects.count(), 1)
+        self.assertEqual(Sale.objects.count(), 1)
+        self.assertEqual(Debt.objects.count(), 1)
+        self.assertEqual(Expense.objects.count(), 1)
+        self.assertEqual(Supplier.objects.count(), 1)
+        self.assertEqual(CustomerRequest.objects.count(), 1)
+
+        response = self.client.get("/api/business-data", HTTP_AUTHORIZATION=f"Bearer {token}")
+        self.assertEqual(response.status_code, 200)
+        data = response.json()["data"]
+        self.assertEqual(data["products"][0]["name"], "Acetone")
+        self.assertEqual(data["sales"][0]["id"], "INV-1")
+
+    def test_business_data_requires_authentication(self):
+        response = self.client.get("/api/business-data")
+        self.assertEqual(response.status_code, 401)
+
+    @override_settings(REGISTRATION_ENABLED=True)
+    def test_frontend_login_accepts_django_superuser_username(self):
+        admin = AdminUser.objects.create_user(username="owner", email="owner@kingsstore.local", password="StrongPass12345")
+        admin.is_staff = True
+        admin.is_superuser = True
+        admin.save()
+
+        response = self.client.post(
+            "/api/auth/login",
+            data=json.dumps({"username": "owner", "password": "StrongPass12345"}),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertIn("token", body)
+        self.assertEqual(body["user"]["username"], "owner")
+        self.assertEqual(body["user"]["role"], "ADMIN")
+        self.assertTrue(User.objects.filter(username="owner", role="ADMIN").exists())
+    def test_bootstrap_admin_reuses_existing_paytrack_user_by_email(self):
+        User.objects.create(
+            username="oldadmin",
+            name="Old Admin",
+            email="owner@kingsstore.local",
+            password_hash="unused",
+            role="STAFF",
+            active=True,
+        )
+
+        with patch.dict("os.environ", {
+            "PAYTRACK_ADMIN_EMAIL": "owner@kingsstore.local",
+            "PAYTRACK_ADMIN_NAME": "Owner Admin",
+            "PAYTRACK_ADMIN_PASSWORD": "StrongPass12345",
+            "DJANGO_SUPERUSER_USERNAME": "owner",
+        }, clear=False):
+            call_command("bootstrap_admin")
+
+        self.assertEqual(User.objects.filter(email="owner@kingsstore.local").count(), 1)
+        app_user = User.objects.get(email="owner@kingsstore.local")
+        self.assertEqual(app_user.username, "owner")
+        self.assertEqual(app_user.name, "Owner Admin")
+        self.assertEqual(app_user.role, "ADMIN")
+        self.assertTrue(AdminUser.objects.get(username="owner").check_password("StrongPass12345"))
