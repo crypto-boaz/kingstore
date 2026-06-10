@@ -5,7 +5,7 @@ from django.contrib.auth.models import User as AdminUser
 from django.core.management import call_command
 from django.test import TestCase, override_settings
 
-from .models import CustomerRequest, Debt, Expense, Product, Sale, Supplier, User
+from .models import Category, CustomerRequest, Debt, Expense, Product, Sale, Supplier, User
 
 
 class BusinessDataTests(TestCase):
@@ -54,6 +54,64 @@ class BusinessDataTests(TestCase):
         data = response.json()["data"]
         self.assertEqual(data["products"][0]["name"], "Acetone")
         self.assertEqual(data["sales"][0]["id"], "INV-1")
+    def test_put_updates_existing_product_when_barcode_matches_different_id(self):
+        register_response = self.client.post(
+            "/api/auth/register",
+            data=json.dumps({
+                "username": "warehouse",
+                "name": "Warehouse Staff",
+                "email": "warehouse@kingsstore.local",
+                "password": "password123",
+                "role": "WAREHOUSE",
+            }),
+            content_type="application/json",
+        )
+        token = register_response.json()["token"]
+        category = Category.objects.create(name="Cosmetics")
+        Product.objects.create(
+            id="P-existing",
+            serial_code="7201924767",
+            sku="7201924767",
+            name="Old Kojic White",
+            category=category,
+            quantity=1,
+            selling_price=1000,
+        )
+
+        response = self.client.put(
+            "/api/business-data",
+            data=json.dumps({
+                "data": {
+                    "products": [{
+                        "id": "P-local-new-id",
+                        "serialCode": "7201924767",
+                        "name": "KOJIC WHITE",
+                        "category": "Cosmetics",
+                        "quantity": 3,
+                        "unitPrice": 2500,
+                        "lowStockAt": 1,
+                        "transactionHistory": [],
+                    }],
+                    "categories": ["Cosmetics"],
+                    "sales": [],
+                    "debts": [],
+                    "expenses": [],
+                    "suppliers": [],
+                    "customerRequests": [],
+                    "cart": [],
+                }
+            }),
+            content_type="application/json",
+            HTTP_AUTHORIZATION=f"Bearer {token}",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(Product.objects.filter(serial_code="7201924767").count(), 1)
+        product = Product.objects.get(serial_code="7201924767")
+        self.assertEqual(product.id, "P-existing")
+        self.assertEqual(product.name, "KOJIC WHITE")
+        self.assertEqual(product.quantity, 3)
+        self.assertEqual(product.selling_price, 2500)
 
     def test_business_data_requires_authentication(self):
         response = self.client.get("/api/business-data")
@@ -78,6 +136,7 @@ class BusinessDataTests(TestCase):
         self.assertEqual(body["user"]["username"], "owner")
         self.assertEqual(body["user"]["role"], "ADMIN")
         self.assertTrue(User.objects.filter(username="owner", role="ADMIN").exists())
+
     def test_bootstrap_admin_reuses_existing_paytrack_user_by_email(self):
         User.objects.create(
             username="oldadmin",

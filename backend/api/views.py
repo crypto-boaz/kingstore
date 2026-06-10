@@ -375,22 +375,30 @@ def sync_business_data_to_tables(payload):
 
     for item in payload.get("products", []):
         product_id = frontend_id(item.get("id"), "P")
+        serial_code = str(item.get("serialCode") or "").strip() or None
         supplier = supplier_for(item.get("supplier"))
-        product, _ = Product.objects.update_or_create(
-            id=product_id,
-            defaults={
-                "name": item.get("name") or "Unnamed product",
-                "description": item.get("description") or None,
-                "sku": item.get("serialCode") or None,
-                "serial_code": item.get("serialCode") or None,
-                "category": category_for(item.get("category")),
-                "quantity": int(item.get("quantity") or 0),
-                "cost_price": Decimal("0"),
-                "selling_price": decimal_from_body(item, "unitPrice", 0),
-                "low_stock_at": int(item.get("lowStockAt") or 0),
-                "supplier": supplier,
-            },
-        )
+        product = Product.objects.filter(id=product_id).first()
+        if product is None and serial_code:
+            product = Product.objects.filter(Q(serial_code__iexact=serial_code) | Q(sku__iexact=serial_code)).first()
+
+        defaults = {
+            "name": item.get("name") or "Unnamed product",
+            "description": item.get("description") or None,
+            "sku": serial_code,
+            "serial_code": serial_code,
+            "category": category_for(item.get("category")),
+            "quantity": int(item.get("quantity") or 0),
+            "cost_price": Decimal("0"),
+            "selling_price": decimal_from_body(item, "unitPrice", 0),
+            "low_stock_at": int(item.get("lowStockAt") or 0),
+            "supplier": supplier,
+        }
+        if product is None:
+            product = Product.objects.create(id=product_id, **defaults)
+        else:
+            for field, value in defaults.items():
+                setattr(product, field, value)
+            product.save()
         products[item.get("id")] = product
         for entry in item.get("transactionHistory", []):
             InventoryLog.objects.update_or_create(

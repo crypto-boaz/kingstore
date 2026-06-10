@@ -7,6 +7,7 @@ import { Notice, type NoticeState } from "@/components/notice";
 import { ProductQr } from "@/components/product-qr";
 import {
   addToCart,
+  backupLocalBusinessDataToBackend,
   deleteCategory,
   resetInventory,
   saveCategory,
@@ -49,6 +50,7 @@ export default function InventoryPage() {
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [notice, setNotice] = useState<NoticeState>(null);
   const [toast, setToast] = useState("");
+  const [savingProduct, setSavingProduct] = useState(false);
   const [categoryName, setCategoryName] = useState("");
   const [editingCategory, setEditingCategory] = useState("");
   const formRef = useRef<HTMLDivElement | null>(null);
@@ -185,18 +187,27 @@ export default function InventoryPage() {
     window.setTimeout(() => setToast(""), 2600);
   };
 
-  const handleSaveProduct = () => {
+  const handleSaveProduct = async () => {
+    if (savingProduct) return;
+    setSavingProduct(true);
     try {
       const product = saveProduct({ ...form, costPrice: 0 });
       const isNewProduct = !form.id;
+      const synced = await backupLocalBusinessDataToBackend();
       rememberCategory(product.category);
-      setNotice({ type: "success", message: `${product.name} was saved.` });
+      if (!synced) {
+        setNotice({ type: "error", message: `${product.name} was saved locally, but it did not reach the backend. Check login, API URL, Render status, and CORS settings.` });
+        return;
+      }
+      setNotice({ type: "success", message: `${product.name} was saved to the backend.` });
       showProductAddedToast(isNewProduct ? "Product added" : "Product updated");
       setForm(emptyProduct(product.category));
       setShowForm(false);
       setSelectedProduct(null);
     } catch (error) {
       setNotice({ type: "error", message: error instanceof Error ? error.message : "Unable to save product." });
+    } finally {
+      setSavingProduct(false);
     }
   };
 
@@ -341,7 +352,7 @@ export default function InventoryPage() {
               <label className="text-sm font-bold md:col-span-2 xl:col-span-4">Description<textarea className="mt-1 min-h-20 w-full rounded-lg border border-slate-200 p-3 dark:border-slate-700 dark:bg-slate-900" value={form.description ?? ""} onChange={(event) => updateForm("description", event.target.value)} /></label>
             </div>
             <div className="mt-4 flex flex-wrap gap-2">
-              <Button onClick={handleSaveProduct}><Plus size={16} /> Save Product</Button>
+              <Button onClick={handleSaveProduct} disabled={savingProduct}><Plus size={16} /> {savingProduct ? "Saving..." : "Save Product"}</Button>
             </div>
           </div>
         )}

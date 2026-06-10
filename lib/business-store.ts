@@ -519,21 +519,22 @@ function persistBusinessDataToBackend(data: BusinessData) {
     method: "PUT",
     headers: { "Content-Type": "application/json", ...authHeaders() },
     body: JSON.stringify({ data: normalized })
-  }).then((response) => {
+  }).then(async (response) => {
     if (response.status === 401) {
       clearInvalidSession();
       return false;
     }
     if (!response.ok) {
-      throw new Error("Backend sync failed.");
+      const body = await response.json().catch(() => ({}));
+      throw new Error(body.message ?? "Backend sync failed.");
     }
     pendingBackendSync = false;
     lastBackendSyncAt = Date.now();
     window.dispatchEvent(new CustomEvent("business-data-backend-sync", { detail: { ok: true } }));
     return true;
-  }).catch(() => {
+  }).catch((error) => {
     pendingBackendSync = true;
-    window.dispatchEvent(new CustomEvent("business-data-backend-sync", { detail: { ok: false } }));
+    window.dispatchEvent(new CustomEvent("business-data-backend-sync", { detail: { ok: false, message: error instanceof Error ? error.message : "Backend sync failed." } }));
     return false;
   });
 }
