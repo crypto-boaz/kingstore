@@ -112,7 +112,7 @@ DEBUG = env_bool("DJANGO_DEBUG", True)
 if not DEBUG and SECRET_KEY in {"dev-secret-change-me", "replace-with-a-long-random-secret"}:
     raise RuntimeError("Set a strong DJANGO_SECRET_KEY or JWT_SECRET before running with DJANGO_DEBUG=false.")
 
-ALLOWED_HOSTS = env_list("DJANGO_ALLOWED_HOSTS", ["localhost", "127.0.0.1", "0.0.0.0"] if DEBUG else [])
+ALLOWED_HOSTS = env_list("DJANGO_ALLOWED_HOSTS", ["localhost", "127.0.0.1", "0.0.0.0"] if DEBUG else ["paytrack-t2tp.onrender.com"])
 append_unique(ALLOWED_HOSTS, os.environ.get("RENDER_EXTERNAL_HOSTNAME"))
 if not DEBUG and not ALLOWED_HOSTS:
     raise RuntimeError("Set DJANGO_ALLOWED_HOSTS before running with DJANGO_DEBUG=false.")
@@ -161,11 +161,13 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'backend.wsgi.application'
 
+DEPLOYED_FRONTEND_URL = "https://kingstore-inky.vercel.app"
 FRONTEND_URL = os.environ.get("FRONTEND_URL", "").strip().rstrip("/")
 CORS_ALLOWED_ORIGINS = [
     *env_list("CORS_ALLOWED_ORIGINS", ["http://localhost:3000", "http://127.0.0.1:3000"] if DEBUG else []),
 ]
 append_unique(CORS_ALLOWED_ORIGINS, FRONTEND_URL)
+append_unique(CORS_ALLOWED_ORIGINS, DEPLOYED_FRONTEND_URL)
 CORS_ALLOWED_ORIGIN_REGEXES = env_list("CORS_ALLOWED_ORIGIN_REGEXES", [
     r"^http://localhost:\d+$",
     r"^http://127\.0\.0\.1:\d+$",
@@ -173,6 +175,8 @@ CORS_ALLOWED_ORIGIN_REGEXES = env_list("CORS_ALLOWED_ORIGIN_REGEXES", [
 ] if DEBUG else [])
 CORS_ALLOW_CREDENTIALS = True
 CSRF_TRUSTED_ORIGINS = env_list("CSRF_TRUSTED_ORIGINS", CORS_ALLOWED_ORIGINS)
+append_unique(CSRF_TRUSTED_ORIGINS, FRONTEND_URL)
+append_unique(CSRF_TRUSTED_ORIGINS, DEPLOYED_FRONTEND_URL)
 
 
 # Database
