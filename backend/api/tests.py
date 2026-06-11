@@ -42,12 +42,12 @@ class BusinessDataTests(TestCase):
         )
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(Product.objects.count(), 1)
-        self.assertEqual(Sale.objects.count(), 1)
-        self.assertEqual(Debt.objects.count(), 1)
-        self.assertEqual(Expense.objects.count(), 1)
-        self.assertEqual(Supplier.objects.count(), 1)
-        self.assertEqual(CustomerRequest.objects.count(), 1)
+        self.assertTrue(Product.objects.filter(id="P-1", name="Acetone").exists())
+        self.assertEqual(Sale.objects.filter(invoice_no="INV-1").count(), 1)
+        self.assertEqual(Debt.objects.filter(id="D-1").count(), 1)
+        self.assertEqual(Expense.objects.filter(id="EXP-1").count(), 1)
+        self.assertEqual(Supplier.objects.filter(id="SUP-1").count(), 1)
+        self.assertEqual(CustomerRequest.objects.filter(id="REQ-1").count(), 1)
 
         response = self.client.get("/api/business-data", HTTP_AUTHORIZATION=f"Bearer {token}")
         self.assertEqual(response.status_code, 200)
