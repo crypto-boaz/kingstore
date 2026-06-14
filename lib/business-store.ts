@@ -13,12 +13,13 @@ import {
 
 const STORAGE_KEY = "paytrack_kings_store_cosmetics_v3";
 const CART_STORAGE_KEY = "paytrack_kings_store_cosmetics_cart_v1";
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000/api";
+const API_URL = process.env.NODE_ENV === "production" ? "https://paytrack-t2tp.onrender.com/api" : process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000/api";
 const BACKEND_SYNC_TTL_MS = 30_000;
 let currentData: BusinessData | null = null;
 let pendingBackendSync = false;
 let lastBackendSyncAt = 0;
 let backendPersistTimer: number | null = null;
+let lastBackendSyncError = "";
 
 function authHeaders(): Record<string, string> {
   if (typeof window === "undefined") return {};
@@ -513,28 +514,43 @@ export function readBusinessData(): BusinessData {
 
 function persistBusinessDataToBackend(data: BusinessData) {
   if (typeof window === "undefined") return Promise.resolve(false);
+  const token = window.localStorage.getItem("paytrack_token");
+  if (!token) {
+    lastBackendSyncError = "No login session was found. Sign in again, then save the product.";
+    pendingBackendSync = true;
+    window.dispatchEvent(new CustomEvent("business-data-backend-sync", { detail: { ok: false, message: lastBackendSyncError } }));
+    return Promise.resolve(false);
+  }
+
   const normalized = normalizeData(data);
   pendingBackendSync = true;
+  lastBackendSyncError = "";
   return window.fetch(`${API_URL}/business-data`, {
     method: "PUT",
-    headers: { "Content-Type": "application/json", ...authHeaders() },
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
     body: JSON.stringify({ data: normalized })
   }).then(async (response) => {
     if (response.status === 401) {
+      lastBackendSyncError = "Your login session expired or is invalid. Sign out, sign in again, then retry.";
       clearInvalidSession();
       return false;
     }
     if (!response.ok) {
       const body = await response.json().catch(() => ({}));
-      throw new Error(body.message ?? "Backend sync failed.");
+      throw new Error(body.message ? `${body.message} (${response.status})` : `Backend sync failed (${response.status}).`);
     }
     pendingBackendSync = false;
     lastBackendSyncAt = Date.now();
+    lastBackendSyncError = "";
     window.dispatchEvent(new CustomEvent("business-data-backend-sync", { detail: { ok: true } }));
     return true;
   }).catch((error) => {
     pendingBackendSync = true;
-    window.dispatchEvent(new CustomEvent("business-data-backend-sync", { detail: { ok: false, message: error instanceof Error ? error.message : "Backend sync failed." } }));
+    lastBackendSyncError = error instanceof Error ? error.message : "Backend sync failed.";
+    if (lastBackendSyncError === "Failed to fetch") {
+      lastBackendSyncError = "Network/CORS failure. Confirm Vercel is allowed in Render CORS settings and Render is awake.";
+    }
+    window.dispatchEvent(new CustomEvent("business-data-backend-sync", { detail: { ok: false, message: lastBackendSyncError } }));
     return false;
   });
 }
@@ -589,6 +605,10 @@ export async function backupLocalBusinessDataToBackend() {
 
 export function hasPendingBackendSync() {
   return pendingBackendSync;
+}
+
+export function getLastBackendSyncError() {
+  return lastBackendSyncError;
 }
 
 export function writeBusinessData(data: BusinessData, options: { syncBackend?: boolean } = {}) {

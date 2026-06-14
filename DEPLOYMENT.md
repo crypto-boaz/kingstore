@@ -163,7 +163,7 @@ This repository includes `backend/api/fixtures/kingstore_seed.json`, exported fr
 - 1 supplier
 - 1 customer request
 
-To load those records into Render/Supabase after migrations, run:
+To load those records into Render/Supabase after migrations, temporarily set `PAYTRACK_ENABLE_BUSINESS_SEED=true`, then run:
 
 ```bash
 python backend/manage.py seed_business_data --replace
@@ -175,7 +175,7 @@ If your Render service uses `Root Directory = backend`, run:
 python manage.py seed_business_data --replace
 ```
 
-Use `--replace` only when you want the online business records to match this local export. After the online store goes live and starts receiving new records, remove the seed command from automatic deploys so live data is not overwritten.
+Use `--replace` only when you want the online business records to match this local export. After the first online import, remove `PAYTRACK_ENABLE_BUSINESS_SEED` or set it to `false`; the command will safely skip in production without that flag.
 ## Security Checklist
 
 - `DJANGO_DEBUG=false` in production.

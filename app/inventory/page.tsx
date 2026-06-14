@@ -8,6 +8,7 @@ import { ProductQr } from "@/components/product-qr";
 import {
   addToCart,
   backupLocalBusinessDataToBackend,
+  getLastBackendSyncError,
   deleteCategory,
   resetInventory,
   saveCategory,
@@ -196,7 +197,8 @@ export default function InventoryPage() {
       const synced = await backupLocalBusinessDataToBackend();
       rememberCategory(product.category);
       if (!synced) {
-        setNotice({ type: "error", message: `${product.name} was saved locally, but it did not reach the backend. Check login, API URL, Render status, and CORS settings.` });
+        const reason = getLastBackendSyncError();
+        setNotice({ type: "error", message: `${product.name} was saved locally, but it did not reach the backend. ${reason || "Check login, API URL, Render status, and CORS settings."}` });
         return;
       }
       setNotice({ type: "success", message: `${product.name} was saved to the backend.` });

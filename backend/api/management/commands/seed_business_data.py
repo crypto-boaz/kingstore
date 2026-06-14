@@ -1,5 +1,7 @@
+import os
 from pathlib import Path
 
+from django.conf import settings
 from django.core.management import call_command
 from django.core.management.base import BaseCommand
 from django.db import transaction
@@ -38,6 +40,11 @@ class Command(BaseCommand):
         )
 
     def handle(self, *args, **options):
+        seed_enabled = os.environ.get("PAYTRACK_ENABLE_BUSINESS_SEED", "").strip().lower() in {"1", "true", "yes", "on"}
+        if not settings.DEBUG and not seed_enabled:
+            self.stdout.write(self.style.WARNING("Business seed skipped. Set PAYTRACK_ENABLE_BUSINESS_SEED=true to run it in production."))
+            return
+
         fixture = options["fixture"]
         if not Path(fixture).is_file():
             fixture = str(Path(__file__).resolve().parents[2] / "fixtures" / fixture)
