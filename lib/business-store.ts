@@ -602,6 +602,45 @@ export async function backupLocalBusinessDataToBackend() {
   }
   return persistBusinessDataToBackend(readBusinessData());
 }
+export async function saveProductToBackend(product: Product) {
+  if (typeof window === "undefined") return false;
+  const token = window.localStorage.getItem("paytrack_token");
+  if (!token) {
+    lastBackendSyncError = "No login session was found. Sign in again, then save the product.";
+    window.dispatchEvent(new CustomEvent("business-data-backend-sync", { detail: { ok: false, message: lastBackendSyncError } }));
+    return false;
+  }
+
+  lastBackendSyncError = "";
+  return window.fetch(`${API_URL}/products/sync`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify(product)
+  }).then(async (response) => {
+    if (response.status === 401) {
+      lastBackendSyncError = "Your login session expired or is invalid. Sign out, sign in again, then retry.";
+      clearInvalidSession();
+      return false;
+    }
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({}));
+      throw new Error(body.message ? `${body.message} (${response.status})` : `Product backend save failed (${response.status}).`);
+    }
+    pendingBackendSync = false;
+    lastBackendSyncAt = Date.now();
+    lastBackendSyncError = "";
+    window.dispatchEvent(new CustomEvent("business-data-backend-sync", { detail: { ok: true } }));
+    return true;
+  }).catch((error) => {
+    pendingBackendSync = true;
+    lastBackendSyncError = error instanceof Error ? error.message : "Product backend save failed.";
+    if (lastBackendSyncError === "Failed to fetch") {
+      lastBackendSyncError = "Network/CORS failure while saving product. Confirm Render redeployed the latest backend and is awake.";
+    }
+    window.dispatchEvent(new CustomEvent("business-data-backend-sync", { detail: { ok: false, message: lastBackendSyncError } }));
+    return false;
+  });
+}
 
 export function hasPendingBackendSync() {
   return pendingBackendSync;
@@ -704,7 +743,7 @@ export function saveProduct(input: ProductInput) {
     ? data.products.map((item) => (item.id === existing.id ? product : item))
     : [product, ...data.products];
   const categories = uniqueCategories(products, data.categories);
-  writeBusinessData({ ...data, products, categories });
+  writeBusinessData({ ...data, products, categories }, { syncBackend: false });
   return product;
 }
 

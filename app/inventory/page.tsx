@@ -7,7 +7,7 @@ import { Notice, type NoticeState } from "@/components/notice";
 import { ProductQr } from "@/components/product-qr";
 import {
   addToCart,
-  backupLocalBusinessDataToBackend,
+  saveProductToBackend,
   getLastBackendSyncError,
   deleteCategory,
   resetInventory,
@@ -194,7 +194,7 @@ export default function InventoryPage() {
     try {
       const product = saveProduct({ ...form, costPrice: 0 });
       const isNewProduct = !form.id;
-      const synced = await backupLocalBusinessDataToBackend();
+      const synced = await saveProductToBackend(product);
       rememberCategory(product.category);
       if (!synced) {
         const reason = getLastBackendSyncError();

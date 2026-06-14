@@ -11,6 +11,7 @@ urlpatterns = [
     path("auth/me", views.me),
     path("dashboard", views.dashboard),
     path("products", views.products),
+    path("products/sync", views.product_sync),
     path("products/<str:product_id>", views.product_detail),
     path("categories", views.categories),
     path("customers", views.customers),

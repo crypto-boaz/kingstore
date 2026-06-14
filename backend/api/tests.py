@@ -54,6 +54,41 @@ class BusinessDataTests(TestCase):
         data = response.json()["data"]
         self.assertEqual(data["products"][0]["name"], "Acetone")
         self.assertEqual(data["sales"][0]["id"], "INV-1")
+    def test_product_sync_saves_single_frontend_product(self):
+        register_response = self.client.post(
+            "/api/auth/register",
+            data=json.dumps({
+                "username": "productadmin",
+                "name": "Product Admin",
+                "email": "product.admin@kingsstore.local",
+                "password": "password123",
+                "role": "WAREHOUSE",
+            }),
+            content_type="application/json",
+        )
+        token = register_response.json()["token"]
+
+        response = self.client.post(
+            "/api/products/sync",
+            data=json.dumps({
+                "id": "P-front-1",
+                "serialCode": "SYNC-001",
+                "name": "Church Scent",
+                "category": "Fragrance",
+                "quantity": 2,
+                "unitPrice": 3000,
+                "lowStockAt": 1,
+            }),
+            content_type="application/json",
+            HTTP_AUTHORIZATION=f"Bearer {token}",
+        )
+
+        self.assertEqual(response.status_code, 201)
+        product = Product.objects.get(serial_code="SYNC-001")
+        self.assertEqual(product.name, "Church Scent")
+        self.assertEqual(product.category.name, "Fragrance")
+        self.assertEqual(product.quantity, 2)
+        self.assertEqual(product.selling_price, 3000)
     def test_put_updates_existing_product_when_barcode_matches_different_id(self):
         register_response = self.client.post(
             "/api/auth/register",

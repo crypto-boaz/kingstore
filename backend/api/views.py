@@ -725,6 +725,50 @@ def dashboard(_request):
     })
 
 
+
+@csrf_exempt
+@require_http_methods(["POST"])
+@auth_required(["ADMIN", "WAREHOUSE"])
+def product_sync(request):
+    body = json_body(request)
+    product_id = frontend_id(body.get("id"), "P")
+    serial_code = str(body.get("serialCode") or body.get("sku") or "").strip() or None
+    category_name = str(body.get("category") or "Uncategorized").strip() or "Uncategorized"
+    category, _ = Category.objects.get_or_create(name=category_name)
+
+    supplier = None
+    supplier_name = str(body.get("supplier") or "").strip()
+    if supplier_name:
+        supplier, _ = Supplier.objects.get_or_create(name=supplier_name)
+
+    product = Product.objects.filter(id=product_id).first()
+    if product is None and serial_code:
+        product = Product.objects.filter(Q(serial_code__iexact=serial_code) | Q(sku__iexact=serial_code)).first()
+
+    defaults = {
+        "name": body.get("name") or "Unnamed product",
+        "description": body.get("description") or None,
+        "sku": serial_code,
+        "serial_code": serial_code,
+        "category": category,
+        "quantity": int(body.get("quantity") or 0),
+        "cost_price": Decimal("0"),
+        "selling_price": decimal_from_body(body, "unitPrice", body.get("sellingPrice", 0)),
+        "low_stock_at": int(body.get("lowStockAt") or 0),
+        "supplier": supplier,
+    }
+    created = product is None
+    if product is None:
+        product = Product.objects.create(id=product_id, **defaults)
+    else:
+        for field, value in defaults.items():
+            setattr(product, field, value)
+        product.save()
+
+    if created:
+        InventoryLog.objects.create(product=product, type="STOCK_IN", quantity=product.quantity, note="Product created")
+
+    return JsonResponse({"ok": True, "product": product_json(product, include_relations=True)}, status=201 if created else 200)
 @csrf_exempt
 @require_http_methods(["GET", "POST"])
 @auth_required()
