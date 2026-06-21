@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import * as XLSX from "xlsx";
 import { AppShell } from "@/components/app-shell";
 import { Badge, Button, DataTable, PageHeader, Panel, StatCard } from "@/components/ui";
 import { Notice, type NoticeState } from "@/components/notice";
@@ -8,6 +9,7 @@ import { ProductQr } from "@/components/product-qr";
 import {
   addToCart,
   saveProductToBackend,
+  saveProductsToBackend,
   getLastBackendSyncError,
   deleteCategory,
   resetInventory,
@@ -17,7 +19,7 @@ import {
 } from "@/lib/business-store";
 import { useBusinessData } from "@/lib/use-business-data";
 import { downloadCsv, money, shortDate } from "@/lib/utils";
-import { Download, Edit3, Eye, PackageSearch, Plus, Search, ShoppingCart, X } from "lucide-react";
+import { Download, Edit3, Eye, PackageSearch, Plus, Search, ShoppingCart, Upload, X } from "lucide-react";
 import type { Product } from "@/lib/data";
 
 function priceDisplay(value: number) {
@@ -28,6 +30,72 @@ function quantityDisplay(value: number) {
   return value > 0 ? value.toLocaleString() : "";
 }
 
+type ExcelRow = Record<string, unknown>;
+
+const excelColumnAliases = {
+  name: ["productname", "product", "name", "item", "itemname"],
+  barcode: ["barcode", "bar code", "serialcode", "serial code", "sku", "code"],
+  quantity: ["qty", "quantity", "stock", "stockquantity", "stock quantity"],
+  sellingPrice: ["sellingprice", "selling price", "unitprice", "unit price", "price", "amount"],
+  category: ["category", "productcategory", "product category"],
+  supplier: ["supplier", "suppliername", "supplier name"],
+  description: ["description", "details", "note", "notes"],
+  lowStockAt: ["lowstockat", "low stock at", "lowstock", "low stock", "lowstocklevel", "low stock level", "reorderlevel", "reorder level"]
+};
+
+function normalizeHeader(value: string) {
+  return value.toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+function readExcelCell(row: ExcelRow, aliases: string[]) {
+  const cells = new Map(Object.entries(row).map(([key, value]) => [normalizeHeader(key), value]));
+  for (const alias of aliases) {
+    const value = cells.get(normalizeHeader(alias));
+    if (value !== undefined && String(value).trim() !== "") return value;
+  }
+  return "";
+}
+
+function textCell(value: unknown) {
+  return String(value ?? "").trim();
+}
+
+function barcodeCell(value: unknown) {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value.toLocaleString("en-US", { useGrouping: false, maximumFractionDigits: 0 });
+  }
+  return textCell(value).replace(/\.0$/, "");
+}
+
+function numberCell(value: unknown) {
+  const cleaned = String(value ?? "").replace(/[\u20a6#,$\s]/g, "").replace(/[^0-9.-]/g, "");
+  const parsed = Number(cleaned);
+  return Number.isFinite(parsed) ? Math.max(0, parsed) : 0;
+}
+
+function parseExcelProducts(rows: ExcelRow[], defaultCategory: string) {
+  const products: ProductInput[] = [];
+  const errors: string[] = [];
+  rows.forEach((row, index) => {
+    const name = textCell(readExcelCell(row, excelColumnAliases.name));
+    if (!name) {
+      errors.push(`Row ${index + 2}: product name is required.`);
+      return;
+    }
+    products.push({
+      serialCode: barcodeCell(readExcelCell(row, excelColumnAliases.barcode)),
+      name,
+      description: textCell(readExcelCell(row, excelColumnAliases.description)),
+      category: textCell(readExcelCell(row, excelColumnAliases.category)) || defaultCategory || "Cosmetics",
+      quantity: numberCell(readExcelCell(row, excelColumnAliases.quantity)),
+      unitPrice: numberCell(readExcelCell(row, excelColumnAliases.sellingPrice)),
+      costPrice: 0,
+      supplier: textCell(readExcelCell(row, excelColumnAliases.supplier)),
+      lowStockAt: numberCell(readExcelCell(row, excelColumnAliases.lowStockAt)) || 20
+    });
+  });
+  return { products, errors };
+}
 function emptyProduct(category = ""): ProductInput {
   return {
     serialCode: "",
@@ -55,6 +123,11 @@ export default function InventoryPage() {
   const [categoryName, setCategoryName] = useState("");
   const [editingCategory, setEditingCategory] = useState("");
   const formRef = useRef<HTMLDivElement | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [importRows, setImportRows] = useState<ProductInput[]>([]);
+  const [importFileName, setImportFileName] = useState("");
+  const [importErrors, setImportErrors] = useState<string[]>([]);
+  const [importingProducts, setImportingProducts] = useState(false);
 
   const filteredProducts = useMemo(() => {
     const value = query.trim().toLowerCase();
@@ -213,6 +286,53 @@ export default function InventoryPage() {
     }
   };
 
+  const handleExcelUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.currentTarget.files?.[0];
+    event.currentTarget.value = "";
+    if (!file) return;
+
+    try {
+      const workbook = XLSX.read(await file.arrayBuffer(), { type: "array" });
+      const firstSheet = workbook.SheetNames[0];
+      if (!firstSheet) throw new Error("The workbook is empty.");
+      const rows = XLSX.utils.sheet_to_json<ExcelRow>(workbook.Sheets[firstSheet], { defval: "", raw: false });
+      if (!rows.length) throw new Error("No product rows were found in the first sheet.");
+      const parsed = parseExcelProducts(rows, lastCategory || categories[0] || "Cosmetics");
+      setImportFileName(file.name);
+      setImportRows(parsed.products);
+      setImportErrors(parsed.errors);
+      setNotice(parsed.products.length
+        ? { type: "success", message: `${parsed.products.length} product row${parsed.products.length === 1 ? "" : "s"} ready to import.` }
+        : { type: "error", message: "No valid products were found. Check the product name column." });
+    } catch (error) {
+      setImportRows([]);
+      setImportFileName("");
+      setImportErrors([]);
+      setNotice({ type: "error", message: error instanceof Error ? error.message : "Unable to read Excel file." });
+    }
+  };
+
+  const handleImportProducts = async () => {
+    if (importingProducts || importRows.length === 0) return;
+    setImportingProducts(true);
+    try {
+      const result = await saveProductsToBackend(importRows);
+      if (!result) {
+        const reason = getLastBackendSyncError();
+        setNotice({ type: "error", message: reason || "Unable to import products to the backend." });
+        return;
+      }
+      const rowMessage = `${result.created} created, ${result.updated} updated${result.skipped ? `, ${result.skipped} skipped` : ""}.`;
+      setNotice({ type: result.skipped ? "error" : "success", message: `Excel import finished: ${rowMessage}` });
+      setImportRows([]);
+      setImportFileName("");
+      setImportErrors(result.errors.map((item) => `Row ${item.row}: ${item.message}`));
+    } catch (error) {
+      setNotice({ type: "error", message: error instanceof Error ? error.message : "Unable to import products." });
+    } finally {
+      setImportingProducts(false);
+    }
+  };
   const handleSaveCategory = () => {
     try {
       const saved = saveCategory(categoryName, editingCategory || undefined);
@@ -289,16 +409,50 @@ export default function InventoryPage() {
         </Panel>
 
         <Panel title="Inventory Controls">
+          <input ref={fileInputRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={handleExcelUpload} />
           <div className="flex flex-wrap gap-2">
             <Button onClick={startAddProduct}><Plus size={16} /> Add Product</Button>
+            <Button className="bg-white text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50 dark:bg-slate-900 dark:text-slate-100 dark:ring-slate-700" onClick={() => fileInputRef.current?.click()}>
+              <Upload size={16} /> Import Excel
+            </Button>
             <Button className="bg-white text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50 dark:bg-slate-900 dark:text-slate-100 dark:ring-slate-700" onClick={() => downloadCsv("inventory.csv", inventoryExportRows)}>
               <Download size={16} /> Export CSV
             </Button>
             <Button className="bg-red-600 hover:bg-red-700" onClick={handleResetInventory}>Reset Inventory</Button>
           </div>
-          <p className="mt-3 text-sm font-semibold text-slate-500">
-            Inventory has been reset to a fresh state for new product entry. Add categories, then add products from scratch.
-          </p>
+          {importFileName && (
+            <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-950">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p className="text-sm font-black text-slate-900 dark:text-white">{importFileName}</p>
+                  <p className="mt-1 text-xs font-bold text-slate-500">{importRows.length.toLocaleString()} rows ready{importErrors.length ? `, ${importErrors.length} issue${importErrors.length === 1 ? "" : "s"}` : ""}</p>
+                </div>
+                <div className="flex gap-2">
+                  <Button className="h-9" onClick={handleImportProducts} disabled={importingProducts || importRows.length === 0}>
+                    <Upload size={15} /> {importingProducts ? "Importing..." : "Import"}
+                  </Button>
+                  <Button className="h-9 bg-white text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50 dark:bg-slate-900 dark:text-slate-100 dark:ring-slate-700" onClick={() => { setImportRows([]); setImportFileName(""); setImportErrors([]); }}>
+                    <X size={15} /> Clear
+                  </Button>
+                </div>
+              </div>
+              {importRows.length > 0 && (
+                <div className="mt-3 grid gap-2 text-xs font-bold text-slate-600 dark:text-slate-300 sm:grid-cols-2">
+                  {importRows.slice(0, 4).map((product, index) => (
+                    <div key={`${product.serialCode || product.name}-${index}`} className="rounded-lg border border-slate-200 bg-white p-2 dark:border-slate-800 dark:bg-slate-900">
+                      <p className="font-black text-slate-900 dark:text-white">{product.name}</p>
+                      <p>{product.serialCode || "No barcode"} | Qty {product.quantity || ""} | {product.unitPrice ? money(product.unitPrice) : "No price"}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {importErrors.length > 0 && (
+                <div className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-bold text-red-800 dark:border-red-900 dark:bg-red-950/30 dark:text-red-200">
+                  {importErrors.slice(0, 3).map((error) => <p key={error}>{error}</p>)}
+                </div>
+              )}
+            </div>
+          )}
         </Panel>
       </div>
 

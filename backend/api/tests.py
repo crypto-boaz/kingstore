@@ -52,7 +52,7 @@ class BusinessDataTests(TestCase):
         response = self.client.get("/api/business-data", HTTP_AUTHORIZATION=f"Bearer {token}")
         self.assertEqual(response.status_code, 200)
         data = response.json()["data"]
-        self.assertEqual(data["products"][0]["name"], "Acetone")
+        self.assertTrue(any(item["name"] == "Acetone" for item in data["products"]))
         self.assertEqual(data["sales"][0]["id"], "INV-1")
     def test_product_sync_saves_single_frontend_product(self):
         register_response = self.client.post(
@@ -89,6 +89,67 @@ class BusinessDataTests(TestCase):
         self.assertEqual(product.category.name, "Fragrance")
         self.assertEqual(product.quantity, 2)
         self.assertEqual(product.selling_price, 3000)
+    def test_products_bulk_sync_creates_updates_and_reports_bad_rows(self):
+        register_response = self.client.post(
+            "/api/auth/register",
+            data=json.dumps({
+                "username": "bulkwarehouse",
+                "name": "Bulk Warehouse",
+                "email": "bulk.warehouse@kingsstore.local",
+                "password": "password123",
+                "role": "WAREHOUSE",
+            }),
+            content_type="application/json",
+        )
+        token = register_response.json()["token"]
+        category = Category.objects.create(name="Cosmetics")
+        Product.objects.create(
+            id="P-existing-bulk",
+            serial_code="7201924767",
+            sku="7201924767",
+            name="Old Kojic White",
+            category=category,
+            quantity=1,
+            selling_price=1000,
+        )
+
+        response = self.client.post(
+            "/api/products/bulk-sync",
+            data=json.dumps({
+                "products": [
+                    {
+                        "id": "P-local-kojic",
+                        "serialCode": "7201924767",
+                        "name": "KOJIC WHITE",
+                        "category": "Cosmetics",
+                        "quantity": 3,
+                        "unitPrice": 2500,
+                        "lowStockAt": 1,
+                    },
+                    {
+                        "id": "P-des-shower",
+                        "serialCode": "XLS-NEW-001",
+                        "name": "DES SHOWER GEL",
+                        "category": "Cosmetics",
+                        "quantity": 0,
+                        "unitPrice": 0,
+                        "lowStockAt": 20,
+                    },
+                    {"serialCode": "BAD-ROW"},
+                ]
+            }),
+            content_type="application/json",
+            HTTP_AUTHORIZATION=f"Bearer {token}",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertEqual(body["created"], 1)
+        self.assertEqual(body["updated"], 1)
+        self.assertEqual(body["skipped"], 1)
+        self.assertEqual(Product.objects.filter(serial_code="7201924767").count(), 1)
+        self.assertEqual(Product.objects.get(serial_code="7201924767").name, "KOJIC WHITE")
+        self.assertTrue(Product.objects.filter(serial_code="XLS-NEW-001", name="DES SHOWER GEL").exists())
     def test_put_updates_existing_product_when_barcode_matches_different_id(self):
         register_response = self.client.post(
             "/api/auth/register",

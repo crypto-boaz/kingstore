@@ -726,11 +726,7 @@ def dashboard(_request):
 
 
 
-@csrf_exempt
-@require_http_methods(["POST"])
-@auth_required(["ADMIN", "WAREHOUSE"])
-def product_sync(request):
-    body = json_body(request)
+def upsert_frontend_product(body):
     product_id = frontend_id(body.get("id"), "P")
     serial_code = str(body.get("serialCode") or body.get("sku") or "").strip() or None
     category_name = str(body.get("category") or "Uncategorized").strip() or "Uncategorized"
@@ -767,8 +763,62 @@ def product_sync(request):
 
     if created:
         InventoryLog.objects.create(product=product, type="STOCK_IN", quantity=product.quantity, note="Product created")
+    return product, created
 
+
+@csrf_exempt
+@require_http_methods(["POST"])
+@auth_required(["ADMIN", "WAREHOUSE"])
+def product_sync(request):
+    body = json_body(request)
+    product, created = upsert_frontend_product(body)
     return JsonResponse({"ok": True, "product": product_json(product, include_relations=True)}, status=201 if created else 200)
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+@auth_required(["ADMIN", "WAREHOUSE"])
+def products_bulk_sync(request):
+    body = json_body(request)
+    items = body.get("products", [])
+    if not isinstance(items, list):
+        return json_error("Products must be a list.")
+    if len(items) > 1000:
+        return json_error("Import a maximum of 1000 products at once.")
+
+    created_count = 0
+    updated_count = 0
+    skipped_count = 0
+    errors = []
+    products = []
+    with transaction.atomic():
+        for index, item in enumerate(items, start=1):
+            if not isinstance(item, dict):
+                skipped_count += 1
+                errors.append({"row": index, "message": "Row is not a valid product."})
+                continue
+            if not str(item.get("name") or "").strip():
+                skipped_count += 1
+                errors.append({"row": index, "message": "Product name is required."})
+                continue
+            try:
+                product, created = upsert_frontend_product(item)
+            except (ValueError, TypeError) as exc:
+                skipped_count += 1
+                errors.append({"row": index, "message": str(exc) or "Unable to save product."})
+                continue
+            created_count += int(created)
+            updated_count += int(not created)
+            products.append(product_json(product, include_relations=True))
+
+    return JsonResponse({
+        "ok": True,
+        "created": created_count,
+        "updated": updated_count,
+        "skipped": skipped_count,
+        "errors": errors,
+        "products": products,
+    })
 @csrf_exempt
 @require_http_methods(["GET", "POST"])
 @auth_required()

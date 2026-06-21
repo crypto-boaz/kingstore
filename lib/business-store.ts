@@ -567,9 +567,9 @@ function scheduleBusinessDataBackendSync(data: BusinessData) {
   }, 650);
 }
 
-export async function syncBusinessDataFromBackend() {
+export async function syncBusinessDataFromBackend(options: { force?: boolean } = {}) {
   if (typeof window === "undefined") return null;
-  if (currentData && Date.now() - lastBackendSyncAt < BACKEND_SYNC_TTL_MS) {
+  if (!options.force && currentData && Date.now() - lastBackendSyncAt < BACKEND_SYNC_TTL_MS) {
     return currentData;
   }
   const response = await window.fetch(`${API_URL}/business-data`, { headers: authHeaders() });
@@ -642,6 +642,54 @@ export async function saveProductToBackend(product: Product) {
   });
 }
 
+export type ProductBulkSyncResult = {
+  ok: boolean;
+  created: number;
+  updated: number;
+  skipped: number;
+  errors: Array<{ row: number; message: string }>;
+};
+
+export async function saveProductsToBackend(products: ProductInput[]): Promise<ProductBulkSyncResult | null> {
+  if (typeof window === "undefined") return null;
+  const token = window.localStorage.getItem("paytrack_token");
+  if (!token) {
+    lastBackendSyncError = "No login session was found. Sign in again, then import the products.";
+    window.dispatchEvent(new CustomEvent("business-data-backend-sync", { detail: { ok: false, message: lastBackendSyncError } }));
+    return null;
+  }
+
+  lastBackendSyncError = "";
+  return window.fetch(`${API_URL}/products/bulk-sync`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ products })
+  }).then(async (response) => {
+    if (response.status === 401) {
+      lastBackendSyncError = "Your login session expired or is invalid. Sign out, sign in again, then retry.";
+      clearInvalidSession();
+      return null;
+    }
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({}));
+      throw new Error(body.message ? `${body.message} (${response.status})` : `Bulk product import failed (${response.status}).`);
+    }
+    const payload = await response.json() as ProductBulkSyncResult;
+    pendingBackendSync = false;
+    lastBackendSyncError = "";
+    await syncBusinessDataFromBackend({ force: true });
+    window.dispatchEvent(new CustomEvent("business-data-backend-sync", { detail: { ok: true } }));
+    return payload;
+  }).catch((error) => {
+    pendingBackendSync = true;
+    lastBackendSyncError = error instanceof Error ? error.message : "Bulk product import failed.";
+    if (lastBackendSyncError === "Failed to fetch") {
+      lastBackendSyncError = "Network/CORS failure while importing products. Confirm Render redeployed the latest backend and is awake.";
+    }
+    window.dispatchEvent(new CustomEvent("business-data-backend-sync", { detail: { ok: false, message: lastBackendSyncError } }));
+    return null;
+  });
+}
 export function hasPendingBackendSync() {
   return pendingBackendSync;
 }
