@@ -163,6 +163,7 @@ WSGI_APPLICATION = 'backend.wsgi.application'
 
 DEPLOYED_FRONTEND_URL = "https://kingstore-inky.vercel.app"
 FRONTEND_URL = os.environ.get("FRONTEND_URL", "").strip().rstrip("/")
+VERCEL_PROJECT_DOMAIN = os.environ.get("VERCEL_PROJECT_DOMAIN", "kingstore").strip()
 CORS_ALLOWED_ORIGINS = [
     *env_list("CORS_ALLOWED_ORIGINS", ["http://localhost:3000", "http://127.0.0.1:3000"] if DEBUG else []),
 ]
@@ -173,6 +174,11 @@ CORS_ALLOWED_ORIGIN_REGEXES = env_list("CORS_ALLOWED_ORIGIN_REGEXES", [
     r"^http://127\.0\.0\.1:\d+$",
     r"^http://192\.168\.\d+\.\d+:\d+$",
 ] if DEBUG else [])
+if not DEBUG:
+    CORS_ALLOWED_ORIGIN_REGEXES.extend([
+        rf"^https://{VERCEL_PROJECT_DOMAIN}(?:-[a-zA-Z0-9-]+)?\.vercel\.app$",
+        r"^https://kingstore-[a-zA-Z0-9-]+\.vercel\.app$",
+    ])
 CORS_ALLOW_CREDENTIALS = True
 CSRF_TRUSTED_ORIGINS = env_list("CSRF_TRUSTED_ORIGINS", CORS_ALLOWED_ORIGINS)
 append_unique(CSRF_TRUSTED_ORIGINS, FRONTEND_URL)

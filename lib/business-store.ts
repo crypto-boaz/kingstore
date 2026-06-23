@@ -15,6 +15,7 @@ const STORAGE_KEY = "paytrack_kings_store_cosmetics_v3";
 const CART_STORAGE_KEY = "paytrack_kings_store_cosmetics_cart_v1";
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? (process.env.NODE_ENV === "production" ? "https://paytrack-t2tp.onrender.com/api" : "http://localhost:4000/api");
 const BACKEND_SYNC_TTL_MS = 30_000;
+const BACKEND_FETCH_RETRIES = 2;
 let currentData: BusinessData | null = null;
 let pendingBackendSync = false;
 let lastBackendSyncAt = 0;
@@ -36,6 +37,37 @@ function clearInvalidSession() {
   if (window.location.pathname !== "/" && window.location.pathname !== "/login") {
     window.location.href = "/";
   }
+}
+
+function wait(ms: number) {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
+function isLikelyNetworkError(error: unknown) {
+  return error instanceof TypeError || (error instanceof Error && error.message === "Failed to fetch");
+}
+
+async function wakeBackend() {
+  try {
+    await window.fetch(`${API_URL}/health`, { cache: "no-store" });
+  } catch {
+    // Best effort only. The original request will surface the final error.
+  }
+}
+
+async function backendFetch(input: RequestInfo | URL, init?: RequestInit, retries = BACKEND_FETCH_RETRIES) {
+  let lastError: unknown;
+  for (let attempt = 0; attempt <= retries; attempt += 1) {
+    try {
+      return await window.fetch(input, init);
+    } catch (error) {
+      lastError = error;
+      if (!isLikelyNetworkError(error) || attempt >= retries) break;
+      if (attempt === 0) await wakeBackend();
+      await wait(700 * (attempt + 1));
+    }
+  }
+  throw lastError;
 }
 
 function readStoredCart(): CartItem[] {
@@ -526,7 +558,7 @@ function persistBusinessDataToBackend(data: BusinessData) {
   const normalized = normalizeData(data);
   pendingBackendSync = true;
   lastBackendSyncError = "";
-  return window.fetch(`${API_URL}/business-data`, {
+  return backendFetch(`${API_URL}/business-data`, {
     method: "PUT",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
     body: JSON.stringify({ data: normalized })
@@ -575,7 +607,7 @@ export async function syncBusinessDataFromBackend(options: { force?: boolean } =
   }
   if (!options.force && backendSyncRequest) return backendSyncRequest;
 
-  backendSyncRequest = window.fetch(`${API_URL}/business-data`, { headers: authHeaders() })
+  backendSyncRequest = backendFetch(`${API_URL}/business-data`, { headers: authHeaders() })
     .then(async (response) => {
       if (response.status === 401) {
         clearInvalidSession();
@@ -622,7 +654,7 @@ export async function saveProductToBackend(product: Product) {
   }
 
   lastBackendSyncError = "";
-  return window.fetch(`${API_URL}/products/sync`, {
+  return backendFetch(`${API_URL}/products/sync`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
     body: JSON.stringify(product)
@@ -645,8 +677,9 @@ export async function saveProductToBackend(product: Product) {
     pendingBackendSync = true;
     lastBackendSyncError = error instanceof Error ? error.message : "Product backend save failed.";
     if (lastBackendSyncError === "Failed to fetch") {
-      lastBackendSyncError = "Network/CORS failure while saving product. Confirm Render redeployed the latest backend and is awake.";
+      lastBackendSyncError = "Network/CORS failure while saving product. PayTrack saved locally and will retry backend sync automatically. Confirm Render is deployed, awake, and using the latest CORS settings.";
     }
+    scheduleBusinessDataBackendSync(readBusinessData());
     window.dispatchEvent(new CustomEvent("business-data-backend-sync", { detail: { ok: false, message: lastBackendSyncError } }));
     return false;
   });
@@ -670,7 +703,7 @@ export async function saveProductsToBackend(products: ProductInput[]): Promise<P
   }
 
   lastBackendSyncError = "";
-  return window.fetch(`${API_URL}/products/bulk-sync`, {
+  return backendFetch(`${API_URL}/products/bulk-sync`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
     body: JSON.stringify({ products })
@@ -713,9 +746,7 @@ export function writeBusinessData(data: BusinessData, options: { syncBackend?: b
   const normalized = shouldSyncBackend ? normalizeData(data) : data;
   currentData = normalized;
   window.localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(normalized.cart));
-  if (shouldSyncBackend) {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(normalized));
-  }
+  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(normalized));
   window.dispatchEvent(new CustomEvent("business-data-change", { detail: normalized }));
   if (shouldSyncBackend) {
     scheduleBusinessDataBackendSync(normalized);

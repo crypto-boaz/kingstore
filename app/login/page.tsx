@@ -6,6 +6,7 @@ import { useState } from "react";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? (process.env.NODE_ENV === "production" ? "https://paytrack-t2tp.onrender.com/api" : "http://localhost:4000/api");
 const REGISTRATION_ENABLED = true;
+const AUTH_FETCH_RETRIES = 2;
 
 type AuthMode = "signin" | "register";
 type UserRole = "STAFF" | "ACCOUNTANT" | "WAREHOUSE";
@@ -15,6 +16,37 @@ const roleOptions: Array<{ value: UserRole; label: string }> = [
   { value: "ACCOUNTANT", label: "Accountant" },
   { value: "WAREHOUSE", label: "Warehouse" }
 ];
+
+function wait(ms: number) {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
+function isLikelyNetworkError(error: unknown) {
+  return error instanceof TypeError || (error instanceof Error && error.message === "Failed to fetch");
+}
+
+async function wakeBackend() {
+  try {
+    await fetch(`${API_URL}/health`, { cache: "no-store" });
+  } catch {
+    // The auth request below will report the final error if Render is unavailable.
+  }
+}
+
+async function authFetch(input: RequestInfo | URL, init?: RequestInit) {
+  let lastError: unknown;
+  for (let attempt = 0; attempt <= AUTH_FETCH_RETRIES; attempt += 1) {
+    try {
+      return await fetch(input, init);
+    } catch (error) {
+      lastError = error;
+      if (!isLikelyNetworkError(error) || attempt >= AUTH_FETCH_RETRIES) break;
+      if (attempt === 0) await wakeBackend();
+      await wait(700 * (attempt + 1));
+    }
+  }
+  throw lastError;
+}
 
 export default function LoginPage() {
   const [mode, setMode] = useState<AuthMode>("signin");
@@ -55,7 +87,7 @@ export default function LoginPage() {
       const body = mode === "signin"
         ? { username, password }
         : { username, name, email, password, role };
-      const response = await fetch(`${API_URL}/auth/${endpoint}`, {
+      const response = await authFetch(`${API_URL}/auth/${endpoint}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body)
