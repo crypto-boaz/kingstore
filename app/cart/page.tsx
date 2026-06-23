@@ -7,8 +7,11 @@ import { Badge, Button, PageHeader, Panel, StatCard } from "@/components/ui";
 import { Notice, type NoticeState } from "@/components/notice";
 import { addToCart, clearCart, removeFromCart, updateCartItem } from "@/lib/business-store";
 import { useBusinessData } from "@/lib/use-business-data";
-import { money } from "@/lib/utils";
 import { CheckCircle2, CreditCard, Minus, Plus, ReceiptText, Search, ShoppingCart, X } from "lucide-react";
+
+function cartAmount(value: number) {
+  return new Intl.NumberFormat("en-NG", { maximumFractionDigits: 0 }).format(value);
+}
 
 export default function CartPage() {
   const router = useRouter();
@@ -120,10 +123,12 @@ export default function CartPage() {
                         <div>
                           <p className="whitespace-normal break-words font-black leading-5">{product.name}</p>
                           <p className="mt-1 text-xs font-semibold text-slate-500">{product.category} - {product.quantity.toLocaleString()} available</p>
+                          {product.quantity <= 0 && <p className="mt-1 text-xs font-black text-red-600 dark:text-red-300">Out of stock. Sale will still be recorded.</p>}
+                          {product.quantity > 0 && product.quantity <= product.lowStockAt && <p className="mt-1 text-xs font-black text-amber-600 dark:text-amber-300">Low stock. Check restock soon.</p>}
                         </div>
                         <div className="flex items-center justify-between gap-3">
-                          <Badge tone={product.quantity > 0 ? "success" : "danger"}>{money(product.unitPrice)}</Badge>
-                          <Button disabled={product.quantity <= 0} onClick={() => safely(() => addToCart(product.id), `${product.name} added to cart.`)}>
+                          <Badge tone={product.quantity <= 0 ? "danger" : product.quantity <= product.lowStockAt ? "warning" : "success"}>{cartAmount(product.unitPrice)}</Badge>
+                          <Button onClick={() => safely(() => addToCart(product.id), `${product.name} added to cart.`)}>
                             <Plus size={16} /> Add
                           </Button>
                         </div>
@@ -149,14 +154,13 @@ export default function CartPage() {
                 <div key={item.productId} className="grid gap-3 rounded-lg border border-slate-200 p-3 dark:border-slate-800 md:grid-cols-[1fr_auto_auto] md:items-center">
                   <div>
                     <p className="font-black">{item.product.name}</p>
-                    <p className="text-xs font-semibold text-slate-500">{money(item.product.unitPrice)} each</p>
+                    <p className="text-xs font-semibold text-slate-500">{cartAmount(item.product.unitPrice)} each</p>
                   </div>
                   <div className="flex items-center gap-2">
                     <Button className="size-8 bg-slate-900 p-0 dark:bg-slate-700" onClick={() => safely(() => updateCartItem(item.productId, item.quantity - 1))}><Minus size={14} /></Button>
                     <input
                       type="number"
                       min={1}
-                      max={item.product.quantity}
                       value={item.quantity}
                       onChange={(event) => safely(() => updateCartItem(item.productId, Number(event.target.value)))}
                       className="h-9 w-20 rounded-lg border border-slate-200 px-2 text-center text-sm font-black dark:border-slate-700 dark:bg-slate-950"
@@ -164,7 +168,10 @@ export default function CartPage() {
                     <Button className="size-8 bg-slate-900 p-0 dark:bg-slate-700" onClick={() => safely(() => updateCartItem(item.productId, item.quantity + 1))}><Plus size={14} /></Button>
                   </div>
                   <div className="flex items-center justify-between gap-3 md:justify-end">
-                    <span className="font-black">{money(item.subtotal)}</span>
+                    {item.quantity > item.product.quantity && (
+                      <Badge tone="warning">Insufficient stock</Badge>
+                    )}
+                    <span className="font-black">{cartAmount(item.subtotal)}</span>
                     <Button className="h-8 bg-red-600 px-3 hover:bg-red-700" onClick={() => safely(() => removeFromCart(item.productId))}>Remove</Button>
                   </div>
                 </div>
@@ -175,9 +182,9 @@ export default function CartPage() {
                   <input type="number" min={0} max={subtotal} className="mt-1 h-10 w-full rounded-lg border border-slate-200 px-3 dark:border-slate-700 dark:bg-slate-900" value={discount} onChange={(event) => setDiscount(Number(event.target.value))} />
                 </label>
                 <div className="mt-4 space-y-2 text-sm">
-                  <div className="flex justify-between"><span>Subtotal</span><strong>{money(subtotal)}</strong></div>
-                  <div className="flex justify-between"><span>Discount</span><strong>{money(discount)}</strong></div>
-                  <div className="flex justify-between text-lg"><span>Total</span><strong>{money(total)}</strong></div>
+                  <div className="flex justify-between"><span>Subtotal</span><strong>{cartAmount(subtotal)}</strong></div>
+                  <div className="flex justify-between"><span>Discount</span><strong>{cartAmount(discount)}</strong></div>
+                  <div className="flex justify-between text-lg"><span>Total</span><strong>{cartAmount(total)}</strong></div>
                 </div>
               </div>
 

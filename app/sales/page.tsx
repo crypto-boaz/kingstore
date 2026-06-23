@@ -17,6 +17,8 @@ type InvoiceItem = {
   serialCode: string;
   category: string;
   quantity: number;
+  availableQuantity: number;
+  lowStockAt: number;
   price: number;
 };
 
@@ -77,6 +79,8 @@ function SalesContent() {
           serialCode: product.serialCode,
           category: product.category,
           quantity: item.quantity,
+          availableQuantity: product.quantity,
+          lowStockAt: product.lowStockAt,
           price: product.unitPrice
         };
       })
@@ -260,6 +264,9 @@ function SalesContent() {
                   <div>
                     <p className="font-black">{item.name}</p>
                     <p className="text-xs font-semibold text-slate-500">{item.category}</p>
+                    {item.availableQuantity <= 0 && <p className="mt-1 text-xs font-black text-red-600 dark:text-red-300">Out of stock. Sale can still be recorded.</p>}
+                    {item.availableQuantity > 0 && item.quantity > item.availableQuantity && <p className="mt-1 text-xs font-black text-amber-600 dark:text-amber-300">Insufficient stock: {item.availableQuantity.toLocaleString()} available.</p>}
+                    {item.availableQuantity > 0 && item.availableQuantity <= item.lowStockAt && item.quantity <= item.availableQuantity && <p className="mt-1 text-xs font-black text-amber-600 dark:text-amber-300">Low stock item.</p>}
                   </div>
                   <input className="h-10 rounded-lg border border-slate-200 px-2 text-sm dark:border-slate-700 dark:bg-slate-950" type="number" min={1} value={item.quantity} disabled />
                   <input className="h-10 rounded-lg border border-slate-200 px-2 text-sm dark:border-slate-700 dark:bg-slate-950" type="number" min={0} value={item.price} disabled />
@@ -315,6 +322,7 @@ function SalesContent() {
         <p className="receipt-center">No. 162, Ibrahim Taiwo Road</p>
         <p className="receipt-center">Opposite Item 7</p>
         <p className="receipt-center">Phone: 07089741271</p>
+        <div className="receipt-title">Invoice</div>
         <div className="receipt-rule">================================</div>
 
         <div className="receipt-meta">

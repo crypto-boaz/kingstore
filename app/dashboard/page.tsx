@@ -39,6 +39,9 @@ export default function DashboardPage() {
   const expenseTotal = expenses.reduce((sum, expense) => sum + expense.amount, 0);
   const recentSales = sales.slice(0, 8);
   const lowStock = products.filter((product) => product.quantity <= product.lowStockAt);
+  const outOfStock = products.filter((product) => product.quantity <= 0);
+  const inventoryValue = products.reduce((sum, product) => sum + Math.max(0, product.quantity) * product.costPrice, 0);
+  const totalUnits = products.reduce((sum, product) => sum + product.quantity, 0);
 
   useEffect(() => {
     if (!window.location.search.includes("welcome=1")) return;
@@ -71,13 +74,22 @@ export default function DashboardPage() {
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <DashboardCardLink href="/inventory">
-          <StatCard label="Inventory Summary" value={String(products.length)} detail={`${products.reduce((sum, product) => sum + product.quantity, 0).toLocaleString()} units in stock`} />
+          <StatCard label="Inventory Value" value={inventoryValue} detail={`${totalUnits.toLocaleString()} units in stock`} tone="success" />
         </DashboardCardLink>
         <DashboardCardLink href="/sales">
-          <StatCard label="Daily Sales" value={dailySales} detail="Automatically resets each new day" tone="success" />
+          <StatCard label="Today's Sales" value={dailySales} detail={`${sales.filter((sale) => sale.date === todayValue).length} transactions today`} tone="success" />
         </DashboardCardLink>
         <DashboardCardLink href="/reports">
           <StatCard label="Monthly Sales" value={monthlySales} detail="Current month sales history" tone="success" />
+        </DashboardCardLink>
+        <DashboardCardLink href="/inventory">
+          <StatCard label="Total Products" value={String(products.length)} detail={`${totalUnits.toLocaleString()} total units`} />
+        </DashboardCardLink>
+        <DashboardCardLink href="/inventory">
+          <StatCard label="Low Stock Items" value={String(lowStock.length)} detail="Products at or below reorder level" tone={lowStock.length ? "danger" : "success"} />
+        </DashboardCardLink>
+        <DashboardCardLink href="/inventory">
+          <StatCard label="Out of Stock" value={String(outOfStock.length)} detail="Products currently at zero stock" tone={outOfStock.length ? "danger" : "success"} />
         </DashboardCardLink>
         <DashboardCardLink href="/debts">
           <StatCard label="Customer Debts" value={customerDebts} detail={`${debts.filter((debt) => debt.status !== "Settled").length} active ledgers`} tone="warning" />
@@ -87,9 +99,6 @@ export default function DashboardPage() {
         </DashboardCardLink>
         <DashboardCardLink href="/finance">
           <StatCard label="Financial Overview" value={monthlySales - expenseTotal} detail="Sales minus recorded expenses" />
-        </DashboardCardLink>
-        <DashboardCardLink href="/inventory">
-          <StatCard label="Low Stock Alerts" value={String(lowStock.length)} detail="Products below reorder level" tone={lowStock.length ? "danger" : "success"} />
         </DashboardCardLink>
         <DashboardCardLink href="/notifications">
           <StatCard label="Notification Center" value={String(alerts.length)} detail="Smart system alerts" tone={alerts.length ? "warning" : "success"} />

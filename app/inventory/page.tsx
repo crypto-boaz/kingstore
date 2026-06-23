@@ -37,6 +37,7 @@ const excelColumnAliases = {
   barcode: ["barcode", "bar code", "serialcode", "serial code", "sku", "code"],
   quantity: ["qty", "quantity", "stock", "stockquantity", "stock quantity"],
   sellingPrice: ["sellingprice", "selling price", "unitprice", "unit price", "price", "amount"],
+  costPrice: ["costprice", "cost price", "buyingprice", "buying price", "purchaseprice", "purchase price"],
   category: ["category", "productcategory", "product category"],
   supplier: ["supplier", "suppliername", "supplier name"],
   description: ["description", "details", "note", "notes"],
@@ -89,7 +90,7 @@ function parseExcelProducts(rows: ExcelRow[], defaultCategory: string) {
       category: textCell(readExcelCell(row, excelColumnAliases.category)) || defaultCategory || "Cosmetics",
       quantity: numberCell(readExcelCell(row, excelColumnAliases.quantity)),
       unitPrice: numberCell(readExcelCell(row, excelColumnAliases.sellingPrice)),
-      costPrice: 0,
+      costPrice: numberCell(readExcelCell(row, excelColumnAliases.costPrice)),
       supplier: textCell(readExcelCell(row, excelColumnAliases.supplier)),
       lowStockAt: numberCell(readExcelCell(row, excelColumnAliases.lowStockAt)) || 20
     });
@@ -146,15 +147,19 @@ export default function InventoryPage() {
 
   const pricedProducts = useMemo(() => products.filter((product) => product.unitPrice > 0), [products]);
   const lowStock = useMemo(() => products.filter((product) => product.quantity <= product.lowStockAt), [products]);
+  const outOfStock = useMemo(() => products.filter((product) => product.quantity <= 0), [products]);
+  const inventoryValue = useMemo(() => products.reduce((sum, product) => sum + Math.max(0, product.quantity) * product.costPrice, 0), [products]);
   const inventoryExportRows = useMemo(() => products.map((product) => ({
     barcode: product.serialCode,
     name: product.name,
     category: product.category,
     quantity: product.quantity,
     sellingPrice: product.unitPrice,
+    costPrice: product.costPrice,
+    inventoryValue: Math.max(0, product.quantity) * product.costPrice,
     dateAdded: product.dateAdded,
     lowStockAt: product.lowStockAt,
-    status: product.quantity <= product.lowStockAt ? "Low stock" : "In stock"
+    status: product.quantity <= 0 ? "Out of stock" : product.quantity <= product.lowStockAt ? "Low stock" : "In stock"
   })), [products]);
   const suggestions = query ? filteredProducts.slice(0, 5) : [];
   const productRows = useMemo(() => filteredProducts.map((product, index) => [
@@ -166,7 +171,7 @@ export default function InventoryPage() {
     shortDate(product.dateAdded),
     <div key={`${product.id}-status`} className="flex min-w-[96px] justify-center">
       <Badge tone={product.quantity <= product.lowStockAt ? "danger" : "success"}>
-        {product.quantity <= product.lowStockAt ? "Low stock" : "In stock"}
+        {product.quantity <= 0 ? "Out of stock" : product.quantity <= product.lowStockAt ? "Low stock" : "In stock"}
       </Badge>
     </div>,
     <div key={`${product.id}-actions`} className="inline-flex overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900">
@@ -265,7 +270,7 @@ export default function InventoryPage() {
     if (savingProduct) return;
     setSavingProduct(true);
     try {
-      const product = saveProduct({ ...form, costPrice: 0 });
+      const product = saveProduct(form);
       const isNewProduct = !form.id;
       const synced = await saveProductToBackend(product);
       rememberCategory(product.category);
@@ -370,11 +375,13 @@ export default function InventoryPage() {
       />
       <Notice notice={notice} />
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-6">
         <StatCard label="Products" value={String(products.length)} />
         <StatCard label="Priced Products" value={String(pricedProducts.length)} />
         <StatCard label="Categories" value={String(categories.length)} />
         <StatCard label="Low Stock Items" value={String(lowStock.length)} tone="danger" />
+        <StatCard label="Out of Stock" value={String(outOfStock.length)} tone={outOfStock.length ? "danger" : "success"} />
+        <StatCard label="Inventory Value" value={inventoryValue} tone="success" />
       </div>
 
       <div className="mt-6 grid gap-6 xl:grid-cols-[0.8fr_1.2fr]">
@@ -504,6 +511,7 @@ export default function InventoryPage() {
               <label className="text-sm font-bold">Category<select className="mt-1 h-10 w-full rounded-lg border border-slate-200 px-3 dark:border-slate-700 dark:bg-slate-900" value={form.category} onChange={(event) => updateForm("category", event.target.value)}><option value="">Select category</option>{categories.map((category) => <option key={category}>{category}</option>)}</select></label>
               <label className="text-sm font-bold">Quantity<input type="number" min={0} className="mt-1 h-10 w-full rounded-lg border border-slate-200 px-3 dark:border-slate-700 dark:bg-slate-900" value={form.quantity === 0 ? "" : form.quantity} onChange={(event) => updateForm("quantity", event.target.value === "" ? 0 : Number(event.target.value))} /></label>
               <label className="text-sm font-bold">Selling Price<input type="number" min={0} placeholder="Enter selling price" className="mt-1 h-10 w-full rounded-lg border border-slate-200 px-3 dark:border-slate-700 dark:bg-slate-900" value={form.unitPrice === 0 ? "" : form.unitPrice} onChange={(event) => updateForm("unitPrice", event.target.value === "" ? 0 : Number(event.target.value))} /></label>
+              <label className="text-sm font-bold">Cost Price<input type="number" min={0} placeholder="Enter cost price" className="mt-1 h-10 w-full rounded-lg border border-slate-200 px-3 dark:border-slate-700 dark:bg-slate-900" value={form.costPrice === 0 ? "" : form.costPrice} onChange={(event) => updateForm("costPrice", event.target.value === "" ? 0 : Number(event.target.value))} /></label>
               <label className="text-sm font-bold">Low Stock Level<input type="number" min={0} className="mt-1 h-10 w-full rounded-lg border border-slate-200 px-3 dark:border-slate-700 dark:bg-slate-900" value={form.lowStockAt} onChange={(event) => updateForm("lowStockAt", Number(event.target.value))} /></label>
               <label className="text-sm font-bold md:col-span-2 xl:col-span-4">Description<textarea className="mt-1 min-h-20 w-full rounded-lg border border-slate-200 p-3 dark:border-slate-700 dark:bg-slate-900" value={form.description ?? ""} onChange={(event) => updateForm("description", event.target.value)} /></label>
             </div>
@@ -562,6 +570,8 @@ export default function InventoryPage() {
                 {[
                   ["Quantity Available", quantityDisplay(selectedProduct.quantity)],
                   ["Selling Price", priceDisplay(selectedProduct.unitPrice)],
+                  ["Cost Price", priceDisplay(selectedProduct.costPrice)],
+                  ["Stock Value", money(Math.max(0, selectedProduct.quantity) * selectedProduct.costPrice)],
                   ["Product Category", selectedProduct.category],
                   ["Date Added", shortDate(selectedProduct.dateAdded)],
                   ["Low Stock Level", selectedProduct.lowStockAt.toLocaleString()]

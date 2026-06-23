@@ -446,7 +446,7 @@ function withDerivedStatus(debt: Debt): Debt {
 function normalizeProduct(product: Product): Product {
   return {
     ...product,
-    costPrice: 0,
+    costPrice: product.costPrice ?? 0,
     serialCode: product.serialCode || "",
     description: product.description ?? "",
     transactionHistory: product.transactionHistory?.length
@@ -750,8 +750,8 @@ export function saveProduct(input: ProductInput) {
   if (barcode && data.products.some((product) => product.serialCode.toLowerCase() === barcode.toLowerCase() && product.id !== input.id)) {
     throw new Error("Barcode must be unique.");
   }
-  if (input.quantity < 0 || input.unitPrice < 0 || input.lowStockAt < 0) {
-    throw new Error("Quantity and selling price cannot be negative.");
+  if (input.quantity < 0 || input.unitPrice < 0 || input.costPrice < 0 || input.lowStockAt < 0) {
+    throw new Error("Quantity, cost price, and selling price cannot be negative.");
   }
 
   const existing = input.id ? data.products.find((product) => product.id === input.id) : undefined;
@@ -776,7 +776,7 @@ export function saveProduct(input: ProductInput) {
       };
   const product: Product = {
     ...input,
-    costPrice: 0,
+    costPrice: input.costPrice ?? 0,
     serialCode: barcode,
     id: input.id || makeId("P"),
     description: input.description ?? "",
@@ -931,7 +931,6 @@ export function addToCart(productId: string, quantity = 1) {
   if (!product) throw new Error("Product not found.");
   const existing = data.cart.find((item) => item.productId === productId);
   const nextQuantity = (existing?.quantity ?? 0) + quantity;
-  if (nextQuantity > product.quantity) throw new Error("Cart quantity cannot exceed available stock.");
   const cart = existing
     ? data.cart.map((item) => (item.productId === productId ? { ...item, quantity: nextQuantity } : item))
     : [...data.cart, { productId, quantity }];
@@ -946,7 +945,6 @@ export function updateCartItem(productId: string, quantity: number) {
     writeBusinessData({ ...data, cart: data.cart.filter((item) => item.productId !== productId) }, { syncBackend: false });
     return;
   }
-  if (quantity > product.quantity) throw new Error("Cart quantity cannot exceed available stock.");
   writeBusinessData({
     ...data,
     cart: data.cart.map((item) => (item.productId === productId ? { ...item, quantity } : item))
@@ -970,7 +968,6 @@ export function checkoutCart(discount: number) {
   const products = data.products.map((product) => {
     const cartItem = data.cart.find((item) => item.productId === product.id);
     if (!cartItem) return product;
-    if (cartItem.quantity > product.quantity) throw new Error(`${product.name} does not have enough stock.`);
     return {
       ...product,
       quantity: product.quantity - cartItem.quantity,
@@ -1012,7 +1009,6 @@ function completeSaleWithLines(items: Array<{ productId: string; quantity: numbe
     const product = data.products.find((item) => item.id === saleItem.productId);
     if (!product) throw new Error("One of the cart products no longer exists.");
     if (saleItem.quantity < 1) throw new Error(`${product.name} quantity must be greater than zero.`);
-    if (saleItem.quantity > product.quantity) throw new Error(`${product.name} does not have enough stock.`);
     const unitPrice = saleItem.price ?? product.unitPrice;
     if (unitPrice < 0) throw new Error(`${product.name} price cannot be negative.`);
     return { saleItem, product, unitPrice, subtotal: saleItem.quantity * unitPrice };
@@ -1025,7 +1021,6 @@ function completeSaleWithLines(items: Array<{ productId: string; quantity: numbe
     const productRows = saleRows.filter((item) => item.product.id === product.id);
     if (!productRows.length) return product;
     const soldQuantity = productRows.reduce((sum, row) => sum + row.saleItem.quantity, 0);
-    if (soldQuantity > product.quantity) throw new Error(`${product.name} does not have enough stock.`);
     return {
       ...product,
       quantity: product.quantity - soldQuantity,
