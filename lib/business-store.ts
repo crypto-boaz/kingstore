@@ -13,13 +13,14 @@ import {
 
 const STORAGE_KEY = "paytrack_kings_store_cosmetics_v3";
 const CART_STORAGE_KEY = "paytrack_kings_store_cosmetics_cart_v1";
-const API_URL = process.env.NODE_ENV === "production" ? "https://paytrack-t2tp.onrender.com/api" : process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000/api";
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? (process.env.NODE_ENV === "production" ? "https://paytrack-t2tp.onrender.com/api" : "http://localhost:4000/api");
 const BACKEND_SYNC_TTL_MS = 30_000;
 let currentData: BusinessData | null = null;
 let pendingBackendSync = false;
 let lastBackendSyncAt = 0;
 let backendPersistTimer: number | null = null;
 let lastBackendSyncError = "";
+let backendSyncRequest: Promise<BusinessData | null> | null = null;
 
 function authHeaders(): Record<string, string> {
   if (typeof window === "undefined") return {};
@@ -572,26 +573,35 @@ export async function syncBusinessDataFromBackend(options: { force?: boolean } =
   if (!options.force && currentData && Date.now() - lastBackendSyncAt < BACKEND_SYNC_TTL_MS) {
     return currentData;
   }
-  const response = await window.fetch(`${API_URL}/business-data`, { headers: authHeaders() });
-  if (response.status === 401) {
-    clearInvalidSession();
-    return null;
-  }
-  if (!response.ok) return null;
-  const payload = await response.json();
-  if (!payload.data) return null;
-  const existingCart = readBusinessData().cart;
-  const data = normalizeData({
-    ...payload.data,
-    cart: payload.data.cart?.length ? payload.data.cart : existingCart
-  });
-  currentData = data;
-  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-  window.localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(data.cart));
-  pendingBackendSync = false;
-  lastBackendSyncAt = Date.now();
-  window.dispatchEvent(new CustomEvent("business-data-change", { detail: data }));
-  return data;
+  if (!options.force && backendSyncRequest) return backendSyncRequest;
+
+  backendSyncRequest = window.fetch(`${API_URL}/business-data`, { headers: authHeaders() })
+    .then(async (response) => {
+      if (response.status === 401) {
+        clearInvalidSession();
+        return null;
+      }
+      if (!response.ok) return null;
+      const payload = await response.json();
+      if (!payload.data) return null;
+      const existingCart = readBusinessData().cart;
+      const data = normalizeData({
+        ...payload.data,
+        cart: payload.data.cart?.length ? payload.data.cart : existingCart
+      });
+      currentData = data;
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+      window.localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(data.cart));
+      pendingBackendSync = false;
+      lastBackendSyncAt = Date.now();
+      window.dispatchEvent(new CustomEvent("business-data-change", { detail: data }));
+      return data;
+    })
+    .catch(() => null)
+    .finally(() => {
+      backendSyncRequest = null;
+    });
+  return backendSyncRequest;
 }
 
 export async function backupLocalBusinessDataToBackend() {

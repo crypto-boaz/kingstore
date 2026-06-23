@@ -63,12 +63,17 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const cartCount = useMemo(() => cart.reduce((sum, item) => sum + item.quantity, 0), [cart]);
   const searchResults = useMemo(() => {
     if (!searchValue) return [];
-    return products
-      .filter((product) =>
+    const matches = [];
+    for (const product of products) {
+      if (
         [product.name, product.serialCode, product.category, product.supplier]
           .some((field) => field.toLowerCase().includes(searchValue))
-      )
-      .slice(0, 6);
+      ) {
+        matches.push(product);
+        if (matches.length >= 6) break;
+      }
+    }
+    return matches;
   }, [products, searchValue]);
 
   useEffect(() => {

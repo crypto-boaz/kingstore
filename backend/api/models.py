@@ -95,6 +95,12 @@ class Product(BaseModel):
 
     class Meta:
         db_table = "Product"
+        indexes = [
+            models.Index(fields=["name"], name="product_name_idx"),
+            models.Index(fields=["category"], name="product_category_idx"),
+            models.Index(fields=["quantity"], name="product_quantity_idx"),
+            models.Index(fields=["updated_at"], name="product_updated_idx"),
+        ]
 
     def __str__(self) -> str:
         return self.name
@@ -131,6 +137,11 @@ class Sale(BaseModel):
     class Meta:
         db_table = "Sale"
         ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["created_at"], name="sale_created_idx"),
+            models.Index(fields=["customer"], name="sale_customer_idx"),
+            models.Index(fields=["status"], name="sale_status_idx"),
+        ]
 
     def __str__(self) -> str:
         return self.invoice_no
@@ -145,6 +156,10 @@ class SaleItem(BaseModel):
 
     class Meta:
         db_table = "SaleItem"
+        indexes = [
+            models.Index(fields=["sale"], name="saleitem_sale_idx"),
+            models.Index(fields=["product"], name="saleitem_product_idx"),
+        ]
 
 
 class Debt(BaseModel):
@@ -160,6 +175,11 @@ class Debt(BaseModel):
     class Meta:
         db_table = "Debt"
         ordering = ["due_date"]
+        indexes = [
+            models.Index(fields=["due_date"], name="debt_due_date_idx"),
+            models.Index(fields=["status"], name="debt_status_idx"),
+            models.Index(fields=["customer"], name="debt_customer_idx"),
+        ]
 
 
 class Delivery(BaseModel):
@@ -185,6 +205,10 @@ class Expense(BaseModel):
     class Meta:
         db_table = "Expense"
         ordering = ["-date"]
+        indexes = [
+            models.Index(fields=["date"], name="expense_date_idx"),
+            models.Index(fields=["category"], name="expense_category_idx"),
+        ]
 
 
 class Payment(BaseModel):
@@ -210,6 +234,10 @@ class InventoryLog(BaseModel):
 
     class Meta:
         db_table = "InventoryLog"
+        indexes = [
+            models.Index(fields=["product", "created_at"], name="inventory_product_date_idx"),
+            models.Index(fields=["type"], name="inventory_type_idx"),
+        ]
 
 
 class Report(BaseModel):
@@ -249,3 +277,7 @@ class CustomerRequest(BaseModel):
     class Meta:
         db_table = "CustomerRequest"
         ordering = ["-date_requested"]
+        indexes = [
+            models.Index(fields=["date_requested"], name="request_date_idx"),
+            models.Index(fields=["status"], name="request_status_idx"),
+        ]

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect } from "react";
+import { useEffect, useMemo } from "react";
 import { AppShell } from "@/components/app-shell";
 import { Badge, PageHeader, Panel } from "@/components/ui";
 import { buildSmartNotifications, markSmartNotificationsRead } from "@/lib/notifications";
@@ -10,8 +10,9 @@ import { money, shortDate } from "@/lib/utils";
 import { BellRing, ArrowUpRight } from "lucide-react";
 
 export default function NotificationsPage() {
-  const alerts = buildSmartNotifications(useBusinessData());
-  const alertIdsKey = alerts.map((item) => item.id).join("|");
+  const data = useBusinessData();
+  const alerts = useMemo(() => buildSmartNotifications(data), [data]);
+  const alertIdsKey = useMemo(() => alerts.map((item) => item.id).join("|"), [alerts]);
 
   useEffect(() => {
     markSmartNotificationsRead(alertIdsKey ? alertIdsKey.split("|") : []);

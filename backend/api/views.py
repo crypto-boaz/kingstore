@@ -12,6 +12,7 @@ from django.conf import settings
 from django.contrib.auth import authenticate
 from django.db import transaction
 from django.db.models import Prefetch, Q
+from django.core.paginator import Paginator
 from django.http import JsonResponse
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
@@ -157,7 +158,7 @@ def product_json(product, include_relations=False):
         "serialCode": product.serial_code or "",
         "categoryId": product.category_id,
         "quantity": product.quantity,
-        "costPrice": 0,
+        "costPrice": to_float(product.cost_price),
         "sellingPrice": to_float(product.selling_price),
         "lowStockAt": product.low_stock_at,
         "supplierId": product.supplier_id,
@@ -388,7 +389,7 @@ def sync_business_data_to_tables(payload):
             "serial_code": serial_code,
             "category": category_for(item.get("category")),
             "quantity": int(item.get("quantity") or 0),
-            "cost_price": Decimal("0"),
+            "cost_price": decimal_from_body(item, "costPrice", 0),
             "selling_price": decimal_from_body(item, "unitPrice", 0),
             "low_stock_at": int(item.get("lowStockAt") or 0),
             "supplier": supplier,
@@ -508,7 +509,7 @@ def business_data_from_tables():
             "category": item.category.name if item.category_id else "Uncategorized",
             "quantity": item.quantity,
             "unitPrice": to_float(item.selling_price),
-            "costPrice": 0,
+            "costPrice": to_float(item.cost_price),
             "supplier": item.supplier.name if item.supplier_id else "",
             "dateAdded": item.created_at.date().isoformat(),
             "updatedAt": item.updated_at.date().isoformat(),
@@ -748,7 +749,7 @@ def upsert_frontend_product(body):
         "serial_code": serial_code,
         "category": category,
         "quantity": int(body.get("quantity") or 0),
-        "cost_price": Decimal("0"),
+        "cost_price": decimal_from_body(body, "costPrice", body.get("costPrice", 0)),
         "selling_price": decimal_from_body(body, "unitPrice", body.get("sellingPrice", 0)),
         "low_stock_at": int(body.get("lowStockAt") or 0),
         "supplier": supplier,
@@ -824,7 +825,31 @@ def products_bulk_sync(request):
 @auth_required()
 def products(request):
     if request.method == "GET":
-        queryset = Product.objects.select_related("category", "supplier")
+        queryset = Product.objects.select_related("category", "supplier").order_by("name")
+        search = str(request.GET.get("search") or "").strip()
+        category = str(request.GET.get("category") or "").strip()
+        if search:
+            queryset = queryset.filter(
+                Q(name__icontains=search) |
+                Q(serial_code__icontains=search) |
+                Q(sku__icontains=search) |
+                Q(category__name__icontains=search)
+            )
+        if category:
+            queryset = queryset.filter(category__name__iexact=category)
+
+        page = request.GET.get("page")
+        if page:
+            page_size = min(max(int(request.GET.get("pageSize", 100)), 1), 500)
+            page_obj = Paginator(queryset, page_size).get_page(page)
+            return JsonResponse({
+                "items": [product_json(item, include_relations=True) for item in page_obj.object_list],
+                "page": page_obj.number,
+                "pageSize": page_size,
+                "total": page_obj.paginator.count,
+                "pages": page_obj.paginator.num_pages,
+            })
+
         return JsonResponse([product_json(item, include_relations=True) for item in queryset], safe=False)
     if request.user_payload["role"] not in {"ADMIN", "WAREHOUSE"}:
         return json_error("Insufficient permissions", status=403)
@@ -836,7 +861,7 @@ def products(request):
         serial_code=body.get("serialCode") or None,
         category_id=body["categoryId"],
         quantity=int(body.get("quantity", 0)),
-        cost_price=Decimal("0"),
+        cost_price=decimal_from_body(body, "costPrice", 0),
         selling_price=decimal_from_body(body, "sellingPrice", 0),
         low_stock_at=int(body.get("lowStockAt", 20)),
         supplier_id=body.get("supplierId") or None,
@@ -863,7 +888,8 @@ def product_detail(request, product_id):
         "serialCode": "serial_code",
         "categoryId": "category_id",
         "quantity": "quantity",
-        "sellingPrice": "selling_price",
+            "sellingPrice": "selling_price",
+            "costPrice": "cost_price",
         "lowStockAt": "low_stock_at",
         "supplierId": "supplier_id",
     }
@@ -873,7 +899,6 @@ def product_detail(request, product_id):
             if body_key in {"sku", "serialCode"} and not value:
                 value = None
             setattr(product, model_key, value)
-    product.cost_price = Decimal("0")
     product.save()
     return JsonResponse(product_json(product))
 

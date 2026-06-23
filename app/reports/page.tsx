@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { AppShell } from "@/components/app-shell";
 import { Badge, Button, DataTable, PageHeader, Panel, StatCard } from "@/components/ui";
 import { useBusinessData } from "@/lib/use-business-data";
@@ -8,6 +8,7 @@ import { downloadCsv, money, shortDate } from "@/lib/utils";
 import { Download, FileText } from "lucide-react";
 
 type ReportMode = "today" | "date" | "week" | "month" | "year" | "range";
+const SALES_REPORT_PAGE_SIZE = 100;
 
 function isoDate(date: Date) {
   return date.toISOString().slice(0, 10);
@@ -45,12 +46,13 @@ function labelForMode(mode: ReportMode) {
 
 export default function ReportsPage() {
   const { sales, products, debts, expenses } = useBusinessData();
-  const now = new Date();
-  const todayValue = today();
+  const now = useMemo(() => new Date(), []);
+  const todayValue = useMemo(() => today(), []);
   const [mode, setMode] = useState<ReportMode>("today");
   const [selectedDate, setSelectedDate] = useState(todayValue);
   const [rangeStart, setRangeStart] = useState(monthStart(now));
   const [rangeEnd, setRangeEnd] = useState(todayValue);
+  const [page, setPage] = useState(1);
 
   const period = useMemo(() => {
     if (mode === "today") return { start: todayValue, end: todayValue };
@@ -64,6 +66,16 @@ export default function ReportsPage() {
   const filteredSales = useMemo(() => {
     return sales.filter((sale) => sale.date >= period.start && sale.date <= period.end);
   }, [period, sales]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [period.start, period.end, sales.length]);
+  const pageCount = Math.max(1, Math.ceil(filteredSales.length / SALES_REPORT_PAGE_SIZE));
+  const visibleSales = useMemo(() => {
+    const safePage = Math.min(page, pageCount);
+    const start = (safePage - 1) * SALES_REPORT_PAGE_SIZE;
+    return filteredSales.slice(start, start + SALES_REPORT_PAGE_SIZE);
+  }, [filteredSales, page, pageCount]);
 
   const totalRevenue = filteredSales.reduce((sum, sale) => sum + sale.total, 0);
   const amountCollected = filteredSales.reduce((sum, sale) => sum + sale.paid, 0);
@@ -133,7 +145,7 @@ export default function ReportsPage() {
         ) : (
           <DataTable
             headers={["Invoice", "Customer", "Products", "Qty", "Total", "Paid", "Balance", "Method", "Status", "Date"]}
-            rows={filteredSales.map((sale) => [
+            rows={visibleSales.map((sale) => [
               sale.id,
               sale.customer,
               sale.product,
@@ -146,6 +158,16 @@ export default function ReportsPage() {
               shortDate(sale.date)
             ])}
           />
+        )}
+        {filteredSales.length > SALES_REPORT_PAGE_SIZE && (
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-sm font-bold text-slate-500 dark:text-slate-400">
+            <span>Showing {visibleSales.length.toLocaleString()} of {filteredSales.length.toLocaleString()} sales</span>
+            <div className="flex items-center gap-2">
+              <Button className="h-9 bg-white text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50 dark:bg-slate-900 dark:text-slate-100 dark:ring-slate-700" disabled={page <= 1} onClick={() => setPage((value) => Math.max(1, value - 1))}>Previous</Button>
+              <span>Page {Math.min(page, pageCount).toLocaleString()} of {pageCount.toLocaleString()}</span>
+              <Button className="h-9 bg-white text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50 dark:bg-slate-900 dark:text-slate-100 dark:ring-slate-700" disabled={page >= pageCount} onClick={() => setPage((value) => Math.min(pageCount, value + 1))}>Next</Button>
+            </div>
+          </div>
         )}
       </Panel>
 

@@ -9,6 +9,8 @@ import { addToCart, clearCart, removeFromCart, updateCartItem } from "@/lib/busi
 import { useBusinessData } from "@/lib/use-business-data";
 import { CheckCircle2, CreditCard, Minus, Plus, ReceiptText, Search, ShoppingCart, X } from "lucide-react";
 
+const POS_PRODUCT_LIMIT = 240;
+
 function cartAmount(value: number) {
   return new Intl.NumberFormat("en-NG", { maximumFractionDigits: 0 }).format(value);
 }
@@ -25,10 +27,18 @@ export default function CartPage() {
 
   const results = useMemo(() => {
     const value = query.trim().toLowerCase();
-    const source = value ? products
-      .filter((product) => [product.name, product.serialCode, product.category].some((field) => field.toLowerCase().includes(value)))
-      : products;
-    return [...source].sort((a, b) => a.category.localeCompare(b.category) || a.name.localeCompare(b.name));
+    const source = [];
+    if (!value) {
+      source.push(...products.slice(0, POS_PRODUCT_LIMIT));
+    } else {
+      for (const product of products) {
+        if ([product.name, product.serialCode, product.category].some((field) => field.toLowerCase().includes(value))) {
+          source.push(product);
+          if (source.length >= POS_PRODUCT_LIMIT) break;
+        }
+      }
+    }
+    return source.sort((a, b) => a.category.localeCompare(b.category) || a.name.localeCompare(b.name));
   }, [products, query]);
 
   const cartRows = cart
@@ -114,6 +124,11 @@ export default function CartPage() {
             </div>
           ) : (
             <div className="max-h-[68vh] overflow-y-auto pr-1">
+              {products.length > POS_PRODUCT_LIMIT && !query.trim() && (
+                <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm font-semibold text-amber-900 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-100">
+                  Showing the first {POS_PRODUCT_LIMIT.toLocaleString()} products. Search by product name, category, or barcode to find anything else instantly.
+                </div>
+              )}
               {groupedResults.map(([category, items]) => (
                 <div key={category} className="mb-5">
                   <h3 className="sticky top-0 z-10 mb-2 rounded-lg bg-slate-100 px-3 py-2 text-xs font-black uppercase text-slate-500 dark:bg-slate-950 dark:text-slate-400">{category}</h3>

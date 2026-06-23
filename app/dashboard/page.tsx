@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { AppShell } from "@/components/app-shell";
 import { Badge, DataTable, PageHeader, Panel, StatCard } from "@/components/ui";
 import { buildSmartNotifications } from "@/lib/notifications";
@@ -29,19 +29,47 @@ export default function DashboardPage() {
   const [showWelcome, setShowWelcome] = useState(false);
   const data = useBusinessData();
   const { products, debts, expenses, suppliers, sales } = data;
-  const alerts = buildSmartNotifications(data);
+  const alerts = useMemo(() => buildSmartNotifications(data), [data]);
   const todayValue = today();
   const currentMonth = monthKey();
-  const dailySales = sales.filter((sale) => sale.date === todayValue).reduce((sum, sale) => sum + sale.total, 0);
-  const monthlySales = sales.filter((sale) => sale.date.startsWith(currentMonth)).reduce((sum, sale) => sum + sale.total, 0);
-  const customerDebts = debts.reduce((sum, debt) => sum + Math.max(0, debt.total - debt.paid), 0);
-  const supplierPayments = suppliers.reduce((sum, supplier) => sum + Math.max(0, supplier.total - supplier.paid), 0);
-  const expenseTotal = expenses.reduce((sum, expense) => sum + expense.amount, 0);
-  const recentSales = sales.slice(0, 8);
-  const lowStock = products.filter((product) => product.quantity <= product.lowStockAt);
-  const outOfStock = products.filter((product) => product.quantity <= 0);
-  const inventoryValue = products.reduce((sum, product) => sum + Math.max(0, product.quantity) * product.costPrice, 0);
-  const totalUnits = products.reduce((sum, product) => sum + product.quantity, 0);
+  const metrics = useMemo(() => {
+    let dailySales = 0;
+    let dailyTransactions = 0;
+    let monthlySales = 0;
+    for (const sale of sales) {
+      if (sale.date === todayValue) {
+        dailySales += sale.total;
+        dailyTransactions += 1;
+      }
+      if (sale.date.startsWith(currentMonth)) monthlySales += sale.total;
+    }
+
+    let inventoryValue = 0;
+    let totalUnits = 0;
+    let lowStockCount = 0;
+    let outOfStockCount = 0;
+    for (const product of products) {
+      inventoryValue += Math.max(0, product.quantity) * product.costPrice;
+      totalUnits += product.quantity;
+      if (product.quantity <= product.lowStockAt) lowStockCount += 1;
+      if (product.quantity <= 0) outOfStockCount += 1;
+    }
+
+    return {
+      dailySales,
+      dailyTransactions,
+      monthlySales,
+      customerDebts: debts.reduce((sum, debt) => sum + Math.max(0, debt.total - debt.paid), 0),
+      activeDebts: debts.filter((debt) => debt.status !== "Settled").length,
+      supplierPayments: suppliers.reduce((sum, supplier) => sum + Math.max(0, supplier.total - supplier.paid), 0),
+      expenseTotal: expenses.reduce((sum, expense) => sum + expense.amount, 0),
+      inventoryValue,
+      totalUnits,
+      lowStockCount,
+      outOfStockCount
+    };
+  }, [currentMonth, debts, expenses, products, sales, suppliers, todayValue]);
+  const recentSales = useMemo(() => sales.slice(0, 8), [sales]);
 
   useEffect(() => {
     if (!window.location.search.includes("welcome=1")) return;
@@ -74,31 +102,31 @@ export default function DashboardPage() {
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <DashboardCardLink href="/inventory">
-          <StatCard label="Inventory Value" value={inventoryValue} detail={`${totalUnits.toLocaleString()} units in stock`} tone="success" />
+          <StatCard label="Inventory Value" value={metrics.inventoryValue} detail={`${metrics.totalUnits.toLocaleString()} units in stock`} tone="success" />
         </DashboardCardLink>
         <DashboardCardLink href="/sales">
-          <StatCard label="Today's Sales" value={dailySales} detail={`${sales.filter((sale) => sale.date === todayValue).length} transactions today`} tone="success" />
+          <StatCard label="Today's Sales" value={metrics.dailySales} detail={`${metrics.dailyTransactions} transactions today`} tone="success" />
         </DashboardCardLink>
         <DashboardCardLink href="/reports">
-          <StatCard label="Monthly Sales" value={monthlySales} detail="Current month sales history" tone="success" />
+          <StatCard label="Monthly Sales" value={metrics.monthlySales} detail="Current month sales history" tone="success" />
         </DashboardCardLink>
         <DashboardCardLink href="/inventory">
-          <StatCard label="Total Products" value={String(products.length)} detail={`${totalUnits.toLocaleString()} total units`} />
+          <StatCard label="Total Products" value={String(products.length)} detail={`${metrics.totalUnits.toLocaleString()} total units`} />
         </DashboardCardLink>
         <DashboardCardLink href="/inventory">
-          <StatCard label="Low Stock Items" value={String(lowStock.length)} detail="Products at or below reorder level" tone={lowStock.length ? "danger" : "success"} />
+          <StatCard label="Low Stock Items" value={String(metrics.lowStockCount)} detail="Products at or below reorder level" tone={metrics.lowStockCount ? "danger" : "success"} />
         </DashboardCardLink>
         <DashboardCardLink href="/inventory">
-          <StatCard label="Out of Stock" value={String(outOfStock.length)} detail="Products currently at zero stock" tone={outOfStock.length ? "danger" : "success"} />
+          <StatCard label="Out of Stock" value={String(metrics.outOfStockCount)} detail="Products currently at zero stock" tone={metrics.outOfStockCount ? "danger" : "success"} />
         </DashboardCardLink>
         <DashboardCardLink href="/debts">
-          <StatCard label="Customer Debts" value={customerDebts} detail={`${debts.filter((debt) => debt.status !== "Settled").length} active ledgers`} tone="warning" />
+          <StatCard label="Customer Debts" value={metrics.customerDebts} detail={`${metrics.activeDebts} active ledgers`} tone="warning" />
         </DashboardCardLink>
         <DashboardCardLink href="/suppliers">
-          <StatCard label="Supplier Payments" value={supplierPayments} detail="Outstanding supplier balances" tone="warning" />
+          <StatCard label="Supplier Payments" value={metrics.supplierPayments} detail="Outstanding supplier balances" tone="warning" />
         </DashboardCardLink>
         <DashboardCardLink href="/finance">
-          <StatCard label="Financial Overview" value={monthlySales - expenseTotal} detail="Sales minus recorded expenses" />
+          <StatCard label="Financial Overview" value={metrics.monthlySales - metrics.expenseTotal} detail="Sales minus recorded expenses" />
         </DashboardCardLink>
         <DashboardCardLink href="/notifications">
           <StatCard label="Notification Center" value={String(alerts.length)} detail="Smart system alerts" tone={alerts.length ? "warning" : "success"} />

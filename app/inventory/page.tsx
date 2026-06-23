@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import * as XLSX from "xlsx";
 import { AppShell } from "@/components/app-shell";
 import { Badge, Button, DataTable, PageHeader, Panel, StatCard } from "@/components/ui";
 import { Notice, type NoticeState } from "@/components/notice";
@@ -43,6 +42,8 @@ const excelColumnAliases = {
   description: ["description", "details", "note", "notes"],
   lowStockAt: ["lowstockat", "low stock at", "lowstock", "low stock", "lowstocklevel", "low stock level", "reorderlevel", "reorder level"]
 };
+
+const INVENTORY_PAGE_SIZE = 100;
 
 function normalizeHeader(value: string) {
   return value.toLowerCase().replace(/[^a-z0-9]/g, "");
@@ -129,6 +130,7 @@ export default function InventoryPage() {
   const [importFileName, setImportFileName] = useState("");
   const [importErrors, setImportErrors] = useState<string[]>([]);
   const [importingProducts, setImportingProducts] = useState(false);
+  const [page, setPage] = useState(1);
 
   const filteredProducts = useMemo(() => {
     const value = query.trim().toLowerCase();
@@ -161,9 +163,15 @@ export default function InventoryPage() {
     lowStockAt: product.lowStockAt,
     status: product.quantity <= 0 ? "Out of stock" : product.quantity <= product.lowStockAt ? "Low stock" : "In stock"
   })), [products]);
+  const pageCount = Math.max(1, Math.ceil(filteredProducts.length / INVENTORY_PAGE_SIZE));
+  const visibleProducts = useMemo(() => {
+    const safePage = Math.min(page, pageCount);
+    const start = (safePage - 1) * INVENTORY_PAGE_SIZE;
+    return filteredProducts.slice(start, start + INVENTORY_PAGE_SIZE);
+  }, [filteredProducts, page, pageCount]);
   const suggestions = query ? filteredProducts.slice(0, 5) : [];
-  const productRows = useMemo(() => filteredProducts.map((product, index) => [
-    index + 1,
+  const productRows = useMemo(() => visibleProducts.map((product, index) => [
+    (Math.min(page, pageCount) - 1) * INVENTORY_PAGE_SIZE + index + 1,
     <button key={`${product.id}-name`} type="button" onClick={() => startEditProduct(product)} className="whitespace-normal break-words text-left font-black text-brand-700 hover:underline dark:text-brand-100">{product.name}</button>,
     product.category,
     quantityDisplay(product.quantity),
@@ -204,7 +212,11 @@ export default function InventoryPage() {
         <PackageSearch size={14} /> Details
       </button>
     </div>
-  ]), [filteredProducts]);
+  ]), [page, pageCount, visibleProducts]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [query, products.length]);
 
   useEffect(() => {
     const productId = new URLSearchParams(window.location.search).get("product");
@@ -297,6 +309,7 @@ export default function InventoryPage() {
     if (!file) return;
 
     try {
+      const XLSX = await import("xlsx");
       const workbook = XLSX.read(await file.arrayBuffer(), { type: "array" });
       const firstSheet = workbook.SheetNames[0];
       if (!firstSheet) throw new Error("The workbook is empty.");
@@ -528,10 +541,22 @@ export default function InventoryPage() {
             <Button className="mt-4" onClick={startAddProduct}><Plus size={16} /> Add Product</Button>
           </div>
         ) : (
-        <DataTable
-            headers={["S/N", "Product Name", "Category", "Quantity", "Selling Price", "Date", "Status", "Actions"]}
-            rows={productRows}
-          />
+          <>
+            <DataTable
+              headers={["S/N", "Product Name", "Category", "Quantity", "Selling Price", "Date", "Status", "Actions"]}
+              rows={productRows}
+            />
+            {filteredProducts.length > INVENTORY_PAGE_SIZE && (
+              <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-sm font-bold text-slate-500 dark:text-slate-400">
+                <span>Showing {productRows.length.toLocaleString()} of {filteredProducts.length.toLocaleString()} products</span>
+                <div className="flex items-center gap-2">
+                  <Button className="h-9 bg-white text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50 dark:bg-slate-900 dark:text-slate-100 dark:ring-slate-700" disabled={page <= 1} onClick={() => setPage((value) => Math.max(1, value - 1))}>Previous</Button>
+                  <span>Page {Math.min(page, pageCount).toLocaleString()} of {pageCount.toLocaleString()}</span>
+                  <Button className="h-9 bg-white text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50 dark:bg-slate-900 dark:text-slate-100 dark:ring-slate-700" disabled={page >= pageCount} onClick={() => setPage((value) => Math.min(pageCount, value + 1))}>Next</Button>
+                </div>
+              </div>
+            )}
+          </>
         )}
       </Panel>
 

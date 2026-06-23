@@ -4,7 +4,7 @@ import { Button } from "@/components/ui";
 import { BarChart3, BookOpenCheck, CreditCard, Lock, Mail, ReceiptText, ShieldCheck, User, WalletCards } from "lucide-react";
 import { useState } from "react";
 
-const API_URL = process.env.NODE_ENV === "production" ? "https://paytrack-t2tp.onrender.com/api" : process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000/api";
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? (process.env.NODE_ENV === "production" ? "https://paytrack-t2tp.onrender.com/api" : "http://localhost:4000/api");
 const REGISTRATION_ENABLED = true;
 
 type AuthMode = "signin" | "register";
