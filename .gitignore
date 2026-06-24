@@ -3,22 +3,28 @@ node_modules/
 .venv/
 venv/
 env/
+.pnp
+.pnp.js
 
-# Next.js build output
+# Next.js
 .next/
 .next-dev/
 out/
+.vercel/
+next-env.d.ts
+*.tsbuildinfo
 
-# Production build
+# Build output
 dist/
 build/
+coverage/
+.cache/
+.turbo/
 
 # Environment files
 .env
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
+.env.*
+!.env.example
 
 # Logs
 *.log
@@ -26,8 +32,6 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
-dev-server.out.log
-dev-server.err.log
 
 # Runtime files
 *.pid
@@ -42,30 +46,43 @@ __pycache__/
 .mypy_cache/
 .ruff_cache/
 htmlcov/
+
+# Django local output
 backend/db.sqlite3
 backend/staticfiles/
+backend/media/
+staticfiles/
+media/
+local_settings.py
 
-# TypeScript
-*.tsbuildinfo
-next-env.d.ts
-
-# Prisma local database files
+# Local databases
 *.db
 *.db-journal
 *.sqlite
 *.sqlite3
+*.sqlite3-journal
 
-# OS and editor files
-.DS_Store
-Thumbs.db
+# Local imports, exports, and Office temp files
+*.xls
+*.xlsx
+*.doc
+*.docx
+*.csv
+~$*
+~WRL*.tmp
+*.tmp
+*_files/
+
+# Local agent/editor state
+.agents/
+.codex/
 .vscode/
 .idea/
 
-# Cache
-.cache/
-.turbo/
-coverage/
-
+# OS files
+.DS_Store
+Thumbs.db
+Thumbs.db:encryptable
 # Package manager cache
 .npm/
 .pnpm-store/
