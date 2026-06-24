@@ -693,6 +693,30 @@ export type ProductBulkSyncResult = {
   errors: Array<{ row: number; message: string }>;
 };
 
+const PRODUCT_BULK_SYNC_BATCH_SIZE = 100;
+
+async function postProductBulkSyncBatch(products: ProductInput[], token: string, rowOffset: number): Promise<ProductBulkSyncResult | null> {
+  const response = await backendFetch(`${API_URL}/products/bulk-sync`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ products })
+  });
+  if (response.status === 401) {
+    lastBackendSyncError = "Your login session expired or is invalid. Sign out, sign in again, then retry.";
+    clearInvalidSession();
+    return null;
+  }
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    throw new Error(body.message ? `${body.message} (${response.status})` : `Bulk product import failed (${response.status}).`);
+  }
+  const payload = await response.json() as ProductBulkSyncResult;
+  return {
+    ...payload,
+    errors: payload.errors.map((item) => ({ ...item, row: item.row + rowOffset }))
+  };
+}
+
 export async function saveProductsToBackend(products: ProductInput[]): Promise<ProductBulkSyncResult | null> {
   if (typeof window === "undefined") return null;
   const token = window.localStorage.getItem("paytrack_token");
@@ -703,35 +727,31 @@ export async function saveProductsToBackend(products: ProductInput[]): Promise<P
   }
 
   lastBackendSyncError = "";
-  return backendFetch(`${API_URL}/products/bulk-sync`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-    body: JSON.stringify({ products })
-  }).then(async (response) => {
-    if (response.status === 401) {
-      lastBackendSyncError = "Your login session expired or is invalid. Sign out, sign in again, then retry.";
-      clearInvalidSession();
-      return null;
+  try {
+    const result: ProductBulkSyncResult = { ok: true, created: 0, updated: 0, skipped: 0, errors: [] };
+    for (let index = 0; index < products.length; index += PRODUCT_BULK_SYNC_BATCH_SIZE) {
+      const batch = products.slice(index, index + PRODUCT_BULK_SYNC_BATCH_SIZE);
+      const payload = await postProductBulkSyncBatch(batch, token, index);
+      if (!payload) return null;
+      result.created += payload.created;
+      result.updated += payload.updated;
+      result.skipped += payload.skipped;
+      result.errors.push(...payload.errors);
     }
-    if (!response.ok) {
-      const body = await response.json().catch(() => ({}));
-      throw new Error(body.message ? `${body.message} (${response.status})` : `Bulk product import failed (${response.status}).`);
-    }
-    const payload = await response.json() as ProductBulkSyncResult;
     pendingBackendSync = false;
     lastBackendSyncError = "";
     await syncBusinessDataFromBackend({ force: true });
     window.dispatchEvent(new CustomEvent("business-data-backend-sync", { detail: { ok: true } }));
-    return payload;
-  }).catch((error) => {
+    return result;
+  } catch (error) {
     pendingBackendSync = true;
     lastBackendSyncError = error instanceof Error ? error.message : "Bulk product import failed.";
     if (lastBackendSyncError === "Failed to fetch") {
-      lastBackendSyncError = "Network/CORS failure while importing products. Confirm Render redeployed the latest backend and is awake.";
+      lastBackendSyncError = "Network/CORS failure while importing products. Confirm you are using https://kingstore-inky.vercel.app, then refresh and sign in again.";
     }
     window.dispatchEvent(new CustomEvent("business-data-backend-sync", { detail: { ok: false, message: lastBackendSyncError } }));
     return null;
-  });
+  }
 }
 export function hasPendingBackendSync() {
   return pendingBackendSync;
