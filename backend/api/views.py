@@ -616,7 +616,7 @@ def business_data_from_tables():
 
 @require_http_methods(["GET"])
 def health(_request):
-    return JsonResponse({"ok": True, "service": "PayTrack Kings Store Cosmetics API"})
+    return JsonResponse({"ok": True, "service": "PayTrack Business API"})
 
 
 @csrf_exempt

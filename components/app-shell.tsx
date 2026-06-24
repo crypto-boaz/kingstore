@@ -16,6 +16,7 @@ import {
   ShoppingCart,
   ReceiptText,
   Search,
+  SlidersHorizontal,
   ShieldCheck,
   LogOut,
   Sun,
@@ -30,6 +31,7 @@ import { buildSmartNotifications, isSmartNotificationRead } from "@/lib/notifica
 const navigation = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/inventory", label: "Inventory", icon: Boxes },
+  { href: "/inventory-control", label: "Inventory Control", icon: SlidersHorizontal },
   { href: "/cart", label: "Cart / POS", icon: ShoppingCart },
   { href: "/sales", label: "Sales", icon: ReceiptText },
   { href: "/debts", label: "Customer Debts", icon: Users },
@@ -137,7 +139,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             </span>
             <span>
               <span className="block text-lg font-bold">PAYTRACK</span>
-              <span className="text-xs font-medium text-slate-500 dark:text-slate-400">Kings Store Cosmetics</span>
+              <span className="text-xs font-medium text-slate-500 dark:text-slate-400">Business Management</span>
             </span>
           </Link>
           <button className="grid size-9 place-items-center rounded-lg border border-slate-200 text-slate-500 transition hover:bg-slate-100 dark:border-slate-700 dark:hover:bg-slate-800 lg:hidden" onClick={() => setOpen(false)} aria-label="Close menu">

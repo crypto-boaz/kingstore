@@ -65,7 +65,7 @@ export default function LoginPage() {
     localStorage.setItem("paytrack_name", user.name ?? "PayTrack User");
     const secureCookie = window.location.protocol === "https:" ? "; Secure" : "";
     document.cookie = `paytrack_session=${encodeURIComponent(token)}; path=/; max-age=28800; SameSite=Strict${secureCookie}`;
-    window.location.href = "/dashboard?welcome=1";
+    window.location.href = "/dashboard";
   };
 
   const submitAuth = async (event: React.FormEvent<HTMLFormElement>) => {
@@ -117,10 +117,10 @@ export default function LoginPage() {
               <ShieldCheck size={16} /> Secure payment tracking
             </div>
             <h1 className="mt-5 text-5xl font-black leading-tight tracking-normal text-slate-950">
-              PayTrack runs Kings Store Cosmetics sales, inventory, credit records, supplier balances, receipts, and alerts in one polished workspace.
+              PayTrack runs sales, inventory, credit records, supplier balances, receipts, and alerts in one polished workspace.
             </h1>
             <p className="mt-4 max-w-lg text-base font-semibold leading-7 text-slate-600">
-              Built for Kings Store Cosmetics, PayTrack helps staff sell faster, print professional receipts, monitor stock, and follow every payment due.
+              Built for growing businesses, PayTrack helps staff sell faster, print professional receipts, monitor stock, and follow every payment due.
             </p>
             <div className="mt-6 grid max-w-lg gap-3 sm:grid-cols-3">
               {[
@@ -240,7 +240,7 @@ export default function LoginPage() {
                       className="w-full bg-transparent outline-none"
                       value={email}
                       onChange={(event) => setEmail(event.target.value)}
-                      placeholder="name@kingsstore.local"
+                      placeholder="name@business.local"
                       type="email"
                     />
                   </span>

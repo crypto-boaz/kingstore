@@ -1,6 +1,6 @@
-# PayTrack Kings Store Cosmetics
+# PayTrack Business Management
 
-PayTrack is a Next.js + Django business system for Kings Store Cosmetics. Django owns the database and backend API; Next.js is the frontend workspace for inventory, sales, debts, suppliers, expenses, reports, receipts, and notifications.
+PayTrack is a Next.js + Django business system for retail and service businesses. Django owns the database and backend API; Next.js is the frontend workspace for inventory, sales, debts, suppliers, expenses, reports, receipts, and notifications.
 
 ## Stack
 

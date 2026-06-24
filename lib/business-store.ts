@@ -81,7 +81,7 @@ function readStoredCart(): CartItem[] {
 }
 
 const initialCategories: string[] = [];
-const LABTRADE_CATEGORY = "Cosmetics";
+const LABTRADE_CATEGORY = "General";
 
 const saltProductNames = [
   "Aluminium Acetate",
@@ -747,7 +747,7 @@ export async function saveProductsToBackend(products: ProductInput[]): Promise<P
     pendingBackendSync = true;
     lastBackendSyncError = error instanceof Error ? error.message : "Bulk product import failed.";
     if (lastBackendSyncError === "Failed to fetch") {
-      lastBackendSyncError = "Network/CORS failure while importing products. Confirm you are using https://kingstore-inky.vercel.app, then refresh and sign in again.";
+      lastBackendSyncError = "Network/CORS failure while importing products. Confirm you are using the deployed PayTrack frontend, then refresh and sign in again.";
     }
     window.dispatchEvent(new CustomEvent("business-data-backend-sync", { detail: { ok: false, message: lastBackendSyncError } }));
     return null;

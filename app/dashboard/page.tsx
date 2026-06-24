@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 import { AppShell } from "@/components/app-shell";
 import { Badge, DataTable, PageHeader, Panel, StatCard } from "@/components/ui";
 import { buildSmartNotifications } from "@/lib/notifications";
@@ -26,7 +26,6 @@ function DashboardCardLink({ href, children }: { href: string; children: React.R
 }
 
 export default function DashboardPage() {
-  const [showWelcome, setShowWelcome] = useState(false);
   const data = useBusinessData();
   const { products, debts, expenses, suppliers, sales } = data;
   const alerts = useMemo(() => buildSmartNotifications(data), [data]);
@@ -71,32 +70,10 @@ export default function DashboardPage() {
   }, [currentMonth, debts, expenses, products, sales, suppliers, todayValue]);
   const recentSales = useMemo(() => sales.slice(0, 8), [sales]);
 
-  useEffect(() => {
-    if (!window.location.search.includes("welcome=1")) return;
-    setShowWelcome(true);
-    const timer = window.setTimeout(() => {
-      setShowWelcome(false);
-      window.history.replaceState(null, "", "/dashboard");
-    }, 1800);
-    return () => window.clearTimeout(timer);
-  }, []);
-
   return (
     <AppShell>
-      {showWelcome && (
-        <div className="fixed inset-0 z-[80] grid place-items-center bg-slate-950 text-white">
-          <div className="text-center">
-            <div className="mx-auto mb-6 size-16 animate-pulse rounded-lg bg-brand-600 shadow-2xl shadow-brand-600/40" />
-            <p className="text-sm font-black uppercase tracking-[0.28em] text-brand-100">PayTrack</p>
-            <h1 className="mt-3 text-3xl font-black sm:text-5xl">Welcome to Kings Store Cosmetics</h1>
-            <div className="mx-auto mt-6 h-1.5 w-72 overflow-hidden rounded-full bg-white/10">
-              <div className="h-full w-1/2 animate-[loadingBar_1.4s_ease-in-out_infinite] rounded-full bg-brand-400" />
-            </div>
-          </div>
-        </div>
-      )}
       <PageHeader
-        title="Kings Store Cosmetics Dashboard"
+        title="Business Dashboard"
         description="Real-time PayTrack control center for inventory, daily sales, debts, supplier payments, finances, alerts, and transactions."
       />
 

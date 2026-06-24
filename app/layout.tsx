@@ -3,8 +3,8 @@ import { BusinessDataProvider } from "@/lib/use-business-data";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "PayTrack - Kings Store Cosmetics",
-  description: "Retail POS, inventory, receipt, ledger, and payment management system for Kings Store Cosmetics"
+  title: "PayTrack - Business Management",
+  description: "Retail POS, inventory, receipt, ledger, and payment management system for growing businesses"
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

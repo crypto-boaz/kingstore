@@ -10,9 +10,6 @@ import {
   saveProductToBackend,
   saveProductsToBackend,
   getLastBackendSyncError,
-  deleteCategory,
-  resetInventory,
-  saveCategory,
   saveProduct,
   type ProductInput
 } from "@/lib/business-store";
@@ -88,7 +85,7 @@ function parseExcelProducts(rows: ExcelRow[], defaultCategory: string) {
       serialCode: barcodeCell(readExcelCell(row, excelColumnAliases.barcode)),
       name,
       description: textCell(readExcelCell(row, excelColumnAliases.description)),
-      category: textCell(readExcelCell(row, excelColumnAliases.category)) || defaultCategory || "Cosmetics",
+      category: textCell(readExcelCell(row, excelColumnAliases.category)) || defaultCategory || "General",
       quantity: numberCell(readExcelCell(row, excelColumnAliases.quantity)),
       unitPrice: numberCell(readExcelCell(row, excelColumnAliases.sellingPrice)),
       costPrice: numberCell(readExcelCell(row, excelColumnAliases.costPrice)),
@@ -122,8 +119,6 @@ export default function InventoryPage() {
   const [notice, setNotice] = useState<NoticeState>(null);
   const [toast, setToast] = useState("");
   const [savingProduct, setSavingProduct] = useState(false);
-  const [categoryName, setCategoryName] = useState("");
-  const [editingCategory, setEditingCategory] = useState("");
   const formRef = useRef<HTMLDivElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [importRows, setImportRows] = useState<ProductInput[]>([]);
@@ -315,7 +310,7 @@ export default function InventoryPage() {
       if (!firstSheet) throw new Error("The workbook is empty.");
       const rows = XLSX.utils.sheet_to_json<ExcelRow>(workbook.Sheets[firstSheet], { defval: "", raw: false });
       if (!rows.length) throw new Error("No product rows were found in the first sheet.");
-      const parsed = parseExcelProducts(rows, lastCategory || categories[0] || "Cosmetics");
+      const parsed = parseExcelProducts(rows, lastCategory || categories[0] || "General");
       setImportFileName(file.name);
       setImportRows(parsed.products);
       setImportErrors(parsed.errors);
@@ -351,27 +346,6 @@ export default function InventoryPage() {
       setImportingProducts(false);
     }
   };
-  const handleSaveCategory = () => {
-    try {
-      const saved = saveCategory(categoryName, editingCategory || undefined);
-      setNotice({ type: "success", message: `${saved} category saved.` });
-      setCategoryName("");
-      setEditingCategory("");
-      rememberCategory(saved);
-      setForm((current) => ({ ...current, category: saved }));
-    } catch (error) {
-      setNotice({ type: "error", message: error instanceof Error ? error.message : "Unable to save category." });
-    }
-  };
-
-  const handleResetInventory = () => {
-    if (!window.confirm("Reset inventory and clear all products, categories, stock, prices, and cart items?")) return;
-    resetInventory();
-    setSelectedProduct(null);
-    setShowForm(false);
-    setNotice({ type: "success", message: "Inventory was reset to a fresh state." });
-  };
-
   return (
     <AppShell>
       {toast && (
@@ -397,37 +371,7 @@ export default function InventoryPage() {
         <StatCard label="Inventory Value" value={inventoryValue} tone="success" />
       </div>
 
-      <div className="mt-6 grid gap-6 xl:grid-cols-[0.8fr_1.2fr]">
-        <Panel title="Category Management">
-          <div className="grid gap-3 sm:grid-cols-[1fr_auto]">
-            <input
-              value={categoryName}
-              onChange={(event) => setCategoryName(event.target.value)}
-              className="h-10 rounded-lg border border-slate-200 px-3 text-sm font-semibold dark:border-slate-700 dark:bg-slate-950"
-              placeholder="Create or rename category"
-            />
-            <Button onClick={handleSaveCategory}><Plus size={16} /> {editingCategory ? "Save" : "Add"} Category</Button>
-          </div>
-          <div className="mt-4 flex flex-wrap gap-2">
-            {categories.length === 0 ? (
-              <p className="text-sm font-semibold text-slate-500">No categories yet. Create one before adding products.</p>
-            ) : categories.map((category) => (
-              <span key={category} className="inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1.5 text-xs font-black text-slate-700 ring-1 ring-slate-200 dark:bg-slate-800 dark:text-slate-100 dark:ring-slate-700">
-                {category}
-                <button type="button" onClick={() => { setEditingCategory(category); setCategoryName(category); }} aria-label={`Edit ${category}`}><Edit3 size={13} /></button>
-                <button type="button" onClick={() => {
-                  try {
-                    deleteCategory(category);
-                    setNotice({ type: "success", message: `${category} category deleted.` });
-                  } catch (error) {
-                    setNotice({ type: "error", message: error instanceof Error ? error.message : "Unable to delete category." });
-                  }
-                }} aria-label={`Delete ${category}`}><X size={13} /></button>
-              </span>
-            ))}
-          </div>
-        </Panel>
-
+      <div className="mt-6">
         <Panel title="Inventory Controls">
           <input ref={fileInputRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={handleExcelUpload} />
           <div className="flex flex-wrap gap-2">
@@ -438,7 +382,6 @@ export default function InventoryPage() {
             <Button className="bg-white text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50 dark:bg-slate-900 dark:text-slate-100 dark:ring-slate-700" onClick={() => downloadCsv("inventory.csv", inventoryExportRows)}>
               <Download size={16} /> Export CSV
             </Button>
-            <Button className="bg-red-600 hover:bg-red-700" onClick={handleResetInventory}>Reset Inventory</Button>
           </div>
           {importFileName && (
             <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-950">

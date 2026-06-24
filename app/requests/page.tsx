@@ -46,7 +46,7 @@ export default function CustomerRequestsPage() {
     <AppShell>
       <PageHeader
         title="Customer Request Log"
-        description="Track cosmetics customers ask for when products are unavailable, then use the list when restocking from suppliers."
+        description="Track products customers ask for when items are unavailable, then use the list when restocking from suppliers."
       />
       <Notice notice={notice} />
 
@@ -92,7 +92,7 @@ export default function CustomerRequestsPage() {
             <div className="rounded-lg border border-dashed border-slate-300 p-8 text-center dark:border-slate-700">
               <ClipboardList className="mx-auto text-slate-400" size={36} />
               <p className="mt-3 font-black">No customer requests yet</p>
-              <p className="mt-1 text-sm font-semibold text-slate-500">Record unavailable cosmetics here so restocking decisions are easier.</p>
+              <p className="mt-1 text-sm font-semibold text-slate-500">Record unavailable products here so restocking decisions are easier.</p>
             </div>
           ) : (
             <DataTable
