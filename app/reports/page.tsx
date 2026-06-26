@@ -7,15 +7,29 @@ import { useBusinessData } from "@/lib/use-business-data";
 import { downloadCsv, money, shortDate } from "@/lib/utils";
 import { Download, FileText } from "lucide-react";
 
-type ReportMode = "today" | "date" | "week" | "month" | "year" | "range";
+type ReportMode = "today" | "yesterday" | "date" | "week" | "month" | "year" | "range";
 const SALES_REPORT_PAGE_SIZE = 100;
 
 function isoDate(date: Date) {
-  return date.toISOString().slice(0, 10);
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }
 
 function today() {
   return isoDate(new Date());
+}
+
+function addDays(value: Date, days: number) {
+  const date = new Date(value);
+  date.setDate(date.getDate() + days);
+  return date;
+}
+
+function saleDateKey(value: string) {
+  const cleanValue = String(value || "").trim();
+  const directDate = cleanValue.match(/^\d{4}-\d{2}-\d{2}/)?.[0];
+  if (directDate) return directDate;
+  const parsed = new Date(cleanValue);
+  return Number.isNaN(parsed.getTime()) ? cleanValue : isoDate(parsed);
 }
 
 function monthStart(value: Date) {
@@ -35,6 +49,7 @@ function weekStart(value: Date) {
 function labelForMode(mode: ReportMode) {
   const labels: Record<ReportMode, string> = {
     today: "Today's Sales",
+    yesterday: "Yesterday's Sales",
     date: "Specific Date",
     week: "This Week",
     month: "This Month",
@@ -43,11 +58,11 @@ function labelForMode(mode: ReportMode) {
   };
   return labels[mode];
 }
-
 export default function ReportsPage() {
   const { sales, products, debts, expenses } = useBusinessData();
   const now = useMemo(() => new Date(), []);
   const todayValue = useMemo(() => today(), []);
+  const yesterdayValue = useMemo(() => isoDate(addDays(now, -1)), [now]);
   const [mode, setMode] = useState<ReportMode>("today");
   const [selectedDate, setSelectedDate] = useState(todayValue);
   const [rangeStart, setRangeStart] = useState(monthStart(now));
@@ -56,15 +71,19 @@ export default function ReportsPage() {
 
   const period = useMemo(() => {
     if (mode === "today") return { start: todayValue, end: todayValue };
+    if (mode === "yesterday") return { start: yesterdayValue, end: yesterdayValue };
     if (mode === "date") return { start: selectedDate, end: selectedDate };
     if (mode === "week") return { start: weekStart(now), end: todayValue };
     if (mode === "month") return { start: monthStart(now), end: todayValue };
     if (mode === "year") return { start: yearStart(now), end: todayValue };
     return rangeStart <= rangeEnd ? { start: rangeStart, end: rangeEnd } : { start: rangeEnd, end: rangeStart };
-  }, [mode, now, rangeEnd, rangeStart, selectedDate, todayValue]);
+  }, [mode, now, rangeEnd, rangeStart, selectedDate, todayValue, yesterdayValue]);
 
   const filteredSales = useMemo(() => {
-    return sales.filter((sale) => sale.date >= period.start && sale.date <= period.end);
+    return sales.filter((sale) => {
+      const date = saleDateKey(sale.date);
+      return date >= period.start && date <= period.end;
+    });
   }, [period, sales]);
 
   useEffect(() => {
@@ -77,6 +96,20 @@ export default function ReportsPage() {
     return filteredSales.slice(start, start + SALES_REPORT_PAGE_SIZE);
   }, [filteredSales, page, pageCount]);
 
+  const dailySalesSummary = useMemo(() => {
+    const summary = new Map<string, { date: string; transactions: number; quantity: number; revenue: number; collected: number; outstanding: number }>();
+    for (const sale of filteredSales) {
+      const date = saleDateKey(sale.date);
+      const current = summary.get(date) ?? { date, transactions: 0, quantity: 0, revenue: 0, collected: 0, outstanding: 0 };
+      current.transactions += 1;
+      current.quantity += sale.quantity;
+      current.revenue += sale.total;
+      current.collected += sale.paid;
+      current.outstanding += Math.max(0, sale.total - sale.paid);
+      summary.set(date, current);
+    }
+    return [...summary.values()].sort((a, b) => b.date.localeCompare(a.date));
+  }, [filteredSales]);
   const totalRevenue = filteredSales.reduce((sum, sale) => sum + sale.total, 0);
   const amountCollected = filteredSales.reduce((sum, sale) => sum + sale.paid, 0);
   const productsSold = filteredSales.reduce((sum, sale) => sum + sale.quantity, 0);
@@ -104,7 +137,7 @@ export default function ReportsPage() {
 
       <Panel title="Report Filters" className="mt-6">
         <div className="flex flex-wrap gap-2">
-          {(["today", "date", "week", "month", "year", "range"] as ReportMode[]).map((item) => (
+          {(["today", "yesterday", "date", "week", "month", "year", "range"] as ReportMode[]).map((item) => (
             <Button
               key={item}
               onClick={() => setMode(item)}
@@ -130,6 +163,34 @@ export default function ReportsPage() {
         </p>
       </Panel>
 
+      <Panel title="Daily Sales Summary" className="mt-6">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <p className="text-sm font-semibold text-slate-500 dark:text-slate-400">
+            Daily totals from {shortDate(period.start)} to {shortDate(period.end)}.
+          </p>
+          <Button className="bg-white text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50 dark:bg-slate-900 dark:text-slate-100 dark:ring-slate-700" onClick={() => downloadCsv("daily-sales-summary.csv", dailySalesSummary)}>
+            <Download size={16} /> CSV
+          </Button>
+        </div>
+        {dailySalesSummary.length === 0 ? (
+          <div className="rounded-lg border border-dashed border-slate-300 p-6 text-center dark:border-slate-700">
+            <p className="font-black">No daily sales total yet</p>
+            <p className="mt-1 text-sm font-semibold text-slate-500">Record sales, then use Today, Yesterday, or a date range to review daily amounts.</p>
+          </div>
+        ) : (
+          <DataTable
+            headers={["Date", "Transactions", "Qty Sold", "Sales Total", "Amount Collected", "Outstanding"]}
+            rows={dailySalesSummary.map((day) => [
+              shortDate(day.date),
+              day.transactions.toLocaleString(),
+              day.quantity.toLocaleString(),
+              money(day.revenue),
+              money(day.collected),
+              money(day.outstanding)
+            ])}
+          />
+        )}
+      </Panel>
       <Panel title="Completed Sales" className="mt-6">
         <div className="mb-4 flex flex-wrap gap-2">
           <Button onClick={() => window.print()}><FileText size={16} /> PDF</Button>
