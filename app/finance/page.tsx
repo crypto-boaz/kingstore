@@ -7,7 +7,7 @@ import { Badge, Button, DataTable, PageHeader, Panel, StatCard } from "@/compone
 import { Notice, type NoticeState } from "@/components/notice";
 import { addExpense, type ExpenseInput } from "@/lib/business-store";
 import { useBusinessData } from "@/lib/use-business-data";
-import { netProfit, revenueSeries, type Expense } from "@/lib/data";
+import { revenueSeries, type Expense } from "@/lib/data";
 import { money, shortDate } from "@/lib/utils";
 import { Plus, X } from "lucide-react";
 
@@ -30,7 +30,7 @@ export default function FinancePage() {
     amount: 0,
     date: new Date().toISOString().slice(0, 10)
   });
-  const totalExpenses = expenses.reduce((sum, expense) => sum + expense.amount, 0);
+  const clearedFinanceValue = 0;
 
   const saveExpense = () => {
     try {
@@ -52,10 +52,10 @@ export default function FinancePage() {
       />
       <Notice notice={notice} />
       <div className="grid gap-4 sm:grid-cols-4">
-        <StatCard label="Daily Income" value={2290500} tone="success" />
-        <StatCard label="Daily Expenses" value={expenses.filter((expense) => expense.date === new Date().toISOString().slice(0, 10)).reduce((sum, expense) => sum + expense.amount, 0)} tone="danger" />
-        <StatCard label="Monthly Expenses" value={totalExpenses} />
-        <StatCard label="Net Profit" value={netProfit - totalExpenses} tone="success" />
+        <StatCard label="Daily Income" value={clearedFinanceValue} tone="success" />
+        <StatCard label="Daily Expenses" value={clearedFinanceValue} tone="danger" />
+        <StatCard label="Monthly Expenses" value={clearedFinanceValue} />
+        <StatCard label="Net Profit" value={clearedFinanceValue} tone="success" />
       </div>
 
       {showForm && (

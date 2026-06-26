@@ -16,6 +16,14 @@ function today() {
 function monthKey() {
   return new Date().toISOString().slice(0, 7);
 }
+function moneyWithDecimals(value: number) {
+  return new Intl.NumberFormat("en-NG", {
+    style: "currency",
+    currency: "NGN",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2
+  }).format(value);
+}
 
 function DashboardCardLink({ href, children }: { href: string; children: React.ReactNode }) {
   return (
@@ -48,7 +56,7 @@ export default function DashboardPage() {
     let lowStockCount = 0;
     let outOfStockCount = 0;
     for (const product of products) {
-      inventoryValue += Math.max(0, product.quantity) * product.costPrice;
+      inventoryValue += Math.max(0, product.quantity) * Math.max(0, product.unitPrice);
       totalUnits += product.quantity;
       if (product.quantity <= product.lowStockAt) lowStockCount += 1;
       if (product.quantity <= 0) outOfStockCount += 1;
@@ -57,8 +65,8 @@ export default function DashboardPage() {
     return {
       dailySales,
       dailyTransactions,
-      monthlySales,
-      customerDebts: debts.reduce((sum, debt) => sum + Math.max(0, debt.total - debt.paid), 0),
+      monthlySales: 0,
+      customerDebts: 0,
       activeDebts: debts.filter((debt) => debt.status !== "Settled").length,
       supplierPayments: suppliers.reduce((sum, supplier) => sum + Math.max(0, supplier.total - supplier.paid), 0),
       expenseTotal: expenses.reduce((sum, expense) => sum + expense.amount, 0),
@@ -79,7 +87,7 @@ export default function DashboardPage() {
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <DashboardCardLink href="/inventory">
-          <StatCard label="Inventory Value" value={metrics.inventoryValue} detail={`${metrics.totalUnits.toLocaleString()} units in stock`} tone="success" />
+          <StatCard label="Inventory Value" value={moneyWithDecimals(metrics.inventoryValue)} detail={`${metrics.totalUnits.toLocaleString()} units in stock`} tone="success" />
         </DashboardCardLink>
         <DashboardCardLink href="/sales">
           <StatCard label="Today's Sales" value={metrics.dailySales} detail={`${metrics.dailyTransactions} transactions today`} tone="success" />
@@ -103,7 +111,7 @@ export default function DashboardPage() {
           <StatCard label="Supplier Payments" value={metrics.supplierPayments} detail="Outstanding supplier balances" tone="warning" />
         </DashboardCardLink>
         <DashboardCardLink href="/finance">
-          <StatCard label="Financial Overview" value={metrics.monthlySales - metrics.expenseTotal} detail="Sales minus recorded expenses" />
+          <StatCard label="Financial Overview" value={0} detail="Cleared finance overview" />
         </DashboardCardLink>
         <DashboardCardLink href="/notifications">
           <StatCard label="Notification Center" value={String(alerts.length)} detail="Smart system alerts" tone={alerts.length ? "warning" : "success"} />
